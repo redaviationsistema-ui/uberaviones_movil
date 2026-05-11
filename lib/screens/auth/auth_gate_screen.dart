@@ -12,7 +12,7 @@ class AuthGateScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
-    if (auth.isLoading && auth.user != null) {
+    if (auth.isLoading && (auth.user != null || auth.session != null)) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );

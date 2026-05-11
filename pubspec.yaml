@@ -11,7 +11,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  supabase_flutter: ^2.3.4
   provider: ^6.1.2
   intl: ^0.19.0
   uuid: ^4.3.3
@@ -20,8 +19,6 @@ dependencies:
   pdf: ^3.10.8
   printing: ^5.12.0
   http: ^1.2.0
-  sqflite: ^2.3.3+1
-  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:

@@ -5,9 +5,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../providers/reservation_provider.dart';
+import '../../services/quote_service.dart';
 import '../../utils/pdf_generator_english.dart' as pdf_en;
 import '../../utils/pdf_generator_es.dart' as pdf_es;
 import '../../utils/price_calculator.dart';
@@ -24,7 +24,7 @@ class QuotePreviewScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            "La cotizacion se calculo con datos locales. Se requiere internet para enviar la reservacion.",
+            "La cotizacion se calculo en la app. Se requiere internet para enviar la reservacion.",
           ),
         ),
       );
@@ -57,26 +57,18 @@ class QuotePreviewScreen extends StatelessWidget {
       return;
     }
 
-    final supabase = Supabase.instance.client;
     final startDate = reservation.startDate!;
     final endDate = reservation.endDate ?? startDate;
     final totals = QuoteCalculator.calculate(reservation);
 
     try {
-      final quote =
-          await supabase
-              .from('quotes')
-              .insert({
-                'full_name': reservation.fullName,
-                'email': reservation.email,
-                'phone': reservation.phone,
-                'flight_type': aircraft.name,
-                'total_estimated_price': totals.totalPrice,
-              })
-              .select()
-              .single();
-
-      final quoteId = quote['id'];
+      final quoteId = await QuoteService.createQuote(
+        fullName: reservation.fullName,
+        email: reservation.email ?? '',
+        phone: reservation.phone ?? '',
+        flightType: aircraft.name,
+        totalPrice: totals.totalPrice,
+      );
 
       for (final route in reservation.routes) {
         final result = PriceCalculator.calculate(
@@ -87,7 +79,7 @@ class QuotePreviewScreen extends StatelessWidget {
           international: totals.isInternational,
         );
 
-        await supabase.from('quote_routes').insert({
+        await QuoteService.createQuoteRoute({
           'quote_id': quoteId,
           'from_airport': route.fromAirport?.name,
           'to_airport': route.toAirport?.name,
@@ -99,7 +91,7 @@ class QuotePreviewScreen extends StatelessWidget {
         });
       }
 
-      await supabase.from('reservations').insert({
+      await QuoteService.createReservation({
         'quote_id': quoteId,
         'aircraft_id': aircraft.id,
         'start_datetime': startDate.toIso8601String(),
@@ -294,7 +286,7 @@ class QuotePreviewScreen extends StatelessWidget {
                   border: Border.all(color: Colors.orange.shade300),
                 ),
                 child: const Text(
-                  "Esta cotizacion se genero con datos guardados en el telefono. Reconectate a internet para enviar la reservacion.",
+                  "No hay conexion disponible. Reconectate a internet para enviar la reservacion.",
                 ),
               ),
             SizedBox(

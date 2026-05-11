@@ -1,29 +1,20 @@
-import '../core/supabase_client.dart';
 import '../models/airport.dart';
+import 'reservation_service.dart';
 
 class AirportService {
+  static final ReservationService _reservationService = ReservationService();
 
   static Future<List<Airport>> getAirports() async {
-
-    final response = await SupabaseService.client
-        .from('aeropuertos_mexico')
-        .select();
-
-    return response
-        .map<Airport>((json) => Airport.fromJson(json))
-        .toList();
+    return _reservationService.getAllAirports();
   }
 
   static Future<List<Airport>> getAirportsByState(String state) async {
+    final airports = await _reservationService.getAllAirports();
+    final normalizedState = state.trim().toUpperCase();
 
-    final response = await SupabaseService.client
-        .from('aeropuertos_mexico')
-        .select()
-        .eq('ESTADO', state);
-
-    return response
-        .map<Airport>((json) => Airport.fromJson(json))
-        .toList();
+    return airports.where((airport) {
+      final airportState = airport.state?.trim().toUpperCase() ?? '';
+      return airportState == normalizedState;
+    }).toList();
   }
-
 }

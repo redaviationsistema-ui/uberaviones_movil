@@ -1,29 +1,18 @@
-import '../core/supabase_client.dart';
 import '../models/aircraft.dart';
+import 'reservation_service.dart';
 
 class AircraftService {
+  static final ReservationService _reservationService = ReservationService();
 
   static Future<List<Aircraft>> getFleet() async {
-
-    final response = await SupabaseService.client
-        .from('aircraft_fleet')
-        .select()
-        .eq('is_active', true);
-
-    return response
-        .map<Aircraft>((json) => Aircraft.fromJson(json))
-        .toList();
+    return _reservationService.getFleet();
   }
 
   static Future<Aircraft?> getAircraftById(String id) async {
-
-    final data = await SupabaseService.client
-        .from('aircraft_fleet')
-        .select()
-        .eq('id', id)
-        .single();
-
-    return Aircraft.fromJson(data);
+    final fleet = await _reservationService.getFleet();
+    for (final aircraft in fleet) {
+      if (aircraft.id == id) return aircraft;
+    }
+    return null;
   }
-
 }

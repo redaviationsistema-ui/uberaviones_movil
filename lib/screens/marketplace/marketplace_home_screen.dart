@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../models/marketplace_models.dart';
 import '../../providers/auth_provider.dart';
-import '../reservation/reservation_screen.dart';
+import '../../providers/reservation_provider.dart';
+import '../admin/admin_dashboard_screen.dart';
+import '../admin/views/admin_aircraft_screen.dart';
+import '../admin/views/admin_finance_screen.dart';
+import '../admin/views/admin_operators_screen.dart';
+import '../admin/views/admin_support_screen.dart';
+import '../cliente/client_portal_sections.dart';
 import '../shared/static_role_screen.dart';
 import '../shared/widgets/role_workspace_shell.dart';
+import '../subscription/membership_center_screen.dart';
 
 class MarketplaceHomeScreen extends StatelessWidget {
   const MarketplaceHomeScreen({super.key, required this.role});
@@ -18,6 +26,8 @@ class MarketplaceHomeScreen extends StatelessWidget {
         return const _ClientWorkspaceScreen();
       case AppUserRole.operator:
         return const _OperatorWorkspaceScreen();
+      case AppUserRole.crew:
+        return const _CrewWorkspaceScreen();
       case AppUserRole.admin:
         return const _AdminWorkspaceScreen();
       case AppUserRole.unknown:
@@ -26,45 +36,83 @@ class MarketplaceHomeScreen extends StatelessWidget {
   }
 }
 
-class _ClientWorkspaceScreen extends StatelessWidget {
+class _ClientWorkspaceScreen extends StatefulWidget {
   const _ClientWorkspaceScreen();
+
+  @override
+  State<_ClientWorkspaceScreen> createState() => _ClientWorkspaceScreenState();
+}
+
+class _ClientWorkspaceScreenState extends State<_ClientWorkspaceScreen> {
+  bool _syncNoticeShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _ensurePortalDataLoaded();
+    });
+  }
+
+  Future<void> _ensurePortalDataLoaded() async {
+    final reservation = context.read<ReservationProvider>();
+    if (reservation.isLoadingData) return;
+    if (reservation.lastSyncAt != null && reservation.reservations.isNotEmpty) {
+      return;
+    }
+
+    await reservation.loadClientPortalData();
+    if (!mounted || _syncNoticeShown || reservation.syncMessage == null) return;
+
+    _syncNoticeShown = true;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(reservation.syncMessage!)));
+  }
 
   @override
   Widget build(BuildContext context) {
     return const RoleWorkspaceShell(
-      branchLabel: 'Comercial',
-      roleLabel: 'Cliente premium',
-      title: 'SkyLuxe Cliente',
+      branchLabel: 'Private Client',
+      roleLabel: 'Elite Membership',
+      title: 'SKY GROUP',
+      insightTitle: 'Portal cliente',
+      insightDescription:
+          'Private Aviation • Instant Booking',
       items: [
         RoleWorkspaceItem(
-          label: 'Inicio',
-          shortLabel: 'Inicio',
-          icon: Icons.dashboard_rounded,
-          screen: _ClientHomeScreen(),
-        ),
-        RoleWorkspaceItem(
-          label: 'Buscar vuelos',
+          label: 'Buscar vuelo',
           shortLabel: 'Buscar',
+          groupLabel: 'Booking',
           icon: Icons.search_rounded,
-          screen: ReservationScreen(),
+          description:
+              'Cotiza, compara y reserva operadores verificados sin brokers.',
+          screen: ClientPortalBookingScreen(),
         ),
         RoleWorkspaceItem(
-          label: 'Mis cotizaciones',
-          shortLabel: 'Cotiza',
-          icon: Icons.request_quote_rounded,
-          screen: _ClientQuotesScreen(),
+          label: 'Mis vuelos',
+          shortLabel: 'Vuelos',
+          groupLabel: 'Mis vuelos',
+          description: 'Seguimiento, timeline e historial dentro del portal.',
+          icon: Icons.route_rounded,
+          screen: ClientPortalTripsScreen(),
         ),
         RoleWorkspaceItem(
-          label: 'Mis viajes',
-          shortLabel: 'Viajes',
-          icon: Icons.flight_takeoff_rounded,
-          screen: _ClientTripsScreen(),
+          label: 'Membresia',
+          shortLabel: 'Plan',
+          groupLabel: 'Membresia',
+          description: 'Estado de cuenta, niveles y beneficios como en la web.',
+          icon: Icons.workspace_premium_rounded,
+          screen: ClientPortalMembershipScreen(),
         ),
         RoleWorkspaceItem(
           label: 'Perfil',
           shortLabel: 'Perfil',
+          groupLabel: 'Perfil',
+          description: 'Preferencias, privacidad y datos del cliente.',
           icon: Icons.manage_accounts_rounded,
-          screen: _ClientProfileScreen(),
+          screen: ClientPortalProfileScreen(),
         ),
       ],
     );
@@ -79,43 +127,810 @@ class _OperatorWorkspaceScreen extends StatelessWidget {
     return const RoleWorkspaceShell(
       branchLabel: 'Operaciones',
       roleLabel: 'Proveedor certificado',
-      title: 'SkyLuxe Proveedor',
+      title: 'Sky Group Operador',
+      insightTitle: 'Coordinacion de flota y disponibilidad',
+      insightDescription:
+          'Visualiza tus operaciones activas, asignaciones y respuesta comercial en tiempo real.',
       items: [
         RoleWorkspaceItem(
           label: 'Dashboard',
           shortLabel: 'Inicio',
+          groupLabel: 'Operacion',
+          description: 'Centro de control del operador y panorama del dia.',
           icon: Icons.dashboard_customize_rounded,
-          screen: _ProviderHomeScreen(),
+          screen: _WorkspaceModuleScreen(
+            title: 'Dashboard proveedor',
+            subtitle:
+                'Resumen de flota, solicitudes, operaciones y SLA del operador.',
+            roleLabel: 'Proveedor',
+            heroTitle: 'Controla disponibilidad, solicitudes y operacion',
+            heroSubtitle:
+                'Vista ejecutiva alineada al portal web para mantener costos, flota y asignaciones visibles.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Aeronaves',
+                value: '8 activas',
+                helper: 'Flota lista para cotizar hoy.',
+              ),
+              MarketplaceMetric(
+                label: 'Solicitudes',
+                value: '6 nuevas',
+                helper: 'Rutas esperando respuesta del operador.',
+              ),
+              MarketplaceMetric(
+                label: 'SLA',
+                value: '12 min',
+                helper: 'Tiempo medio de primera respuesta.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.request_quote_rounded,
+                label: 'Responder solicitudes',
+                message: 'Abre el flujo de respuesta comercial.',
+              ),
+              StaticAction(
+                icon: Icons.calendar_month_rounded,
+                label: 'Actualizar agenda',
+                message: 'Agenda y bloqueo listos para editar.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra pendientes operativos.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'TLC -> CUN',
+                subtitle: 'Solicitud premium con salida hoy',
+                status: 'Pendiente',
+                amount: '\$18,900',
+              ),
+              StaticRecord(
+                title: 'Citation CJ3',
+                subtitle: 'Disponibilidad validada para agenda corta',
+                status: 'Activo',
+                amount: 'Libre',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Solicitudes',
+                description: 'Entrada y respuesta comercial centralizadas.',
+              ),
+              MarketplaceModule(
+                title: 'Flota',
+                description: 'Disponibilidad, costos y estatus de aeronaves.',
+              ),
+              MarketplaceModule(
+                title: 'Operacion',
+                description: 'Seguimiento de vuelos y tripulacion.',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CrewWorkspaceScreen extends StatelessWidget {
+  const _CrewWorkspaceScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const RoleWorkspaceShell(
+      branchLabel: 'Cabina',
+      roleLabel: 'Sobrecargo',
+      title: 'Sky Group Crew',
+      insightTitle: 'Agenda, cabina y servicio',
+      insightDescription:
+          'Todo lo necesario para operar con orden, visibilidad y seguimiento claro.',
+      items: [
+        RoleWorkspaceItem(
+          label: 'Centro Operativo',
+          shortLabel: 'Inicio',
+          groupLabel: 'Operacion',
+          description: 'Resumen de misiones, checklist y briefing del dia.',
+          icon: Icons.dashboard_customize_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Centro Operativo',
+            subtitle:
+                'Dashboard del sobrecargo con agenda, servicio y estado de readiness.',
+            roleLabel: 'Sobrecargo',
+            heroTitle: 'Cabina lista para cada servicio asignado',
+            heroSubtitle:
+                'Replica el portal web de crew con identidad operativa, tareas del dia y alertas documentales.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Asignaciones',
+                value: '2 activas',
+                helper: 'Una en briefing y una en preparacion.',
+              ),
+              MarketplaceMetric(
+                label: 'Readiness',
+                value: '92%',
+                helper: 'Score operativo de cabina y expediente.',
+              ),
+              MarketplaceMetric(
+                label: 'Alertas',
+                value: '1 abierta',
+                helper: 'Incidencia de servicio bajo seguimiento.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.check_circle_outline_rounded,
+                label: 'Confirmar servicio',
+                message: 'Confirma disponibilidad y checklist de cabina.',
+              ),
+              StaticAction(
+                icon: Icons.calendar_month_rounded,
+                label: 'Ver agenda',
+                message: 'Abre la operacion del dia y su timeline.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra tareas pendientes y alertas.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'TLC -> CUN | XA-SKY',
+                subtitle: 'Briefing 08:00 | catering ligero | 6 pasajeros VIP',
+                status: 'Pendiente',
+                amount: 'Hoy',
+              ),
+              StaticRecord(
+                title: 'Documentacion CRM',
+                subtitle:
+                    'Revision administrativa antes de vuelo internacional',
+                status: 'Revision',
+                amount: '15 dias',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Briefing',
+                description: 'Ruta, tiempos, catering y servicio esperado.',
+              ),
+              MarketplaceModule(
+                title: 'Checklist',
+                description: 'Cabina, amenidades y confirmacion de readiness.',
+              ),
+              MarketplaceModule(
+                title: 'Alertas',
+                description: 'Incidencias y documentos por seguir.',
+              ),
+            ],
+          ),
         ),
         RoleWorkspaceItem(
-          label: 'Aeronaves',
-          shortLabel: 'Aviones',
-          icon: Icons.airplanemode_active_rounded,
-          screen: _ProviderAircraftScreen(),
+          label: 'Misiones',
+          shortLabel: 'Misiones',
+          groupLabel: 'Operacion',
+          description: 'Asignaciones aceptadas, pendientes y finalizadas.',
+          icon: Icons.assignment_turned_in_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Misiones',
+            subtitle:
+                'Control de asignaciones por vuelo, respuesta y trazabilidad del servicio.',
+            roleLabel: 'Sobrecargo',
+            heroTitle: 'Gestiona misiones con contexto completo',
+            heroSubtitle:
+                'Cada mision concentra ruta, horario, operador, aeronave y decisiones de aceptar o escalar.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Pendientes',
+                value: '1',
+                helper: 'Requiere respuesta antes de las 11:00.',
+              ),
+              MarketplaceMetric(
+                label: 'Confirmadas',
+                value: '3',
+                helper: 'Misiones listas para operar.',
+              ),
+              MarketplaceMetric(
+                label: 'Finalizadas',
+                value: '18',
+                helper: 'Servicios cerrados durante el mes.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.check_rounded,
+                label: 'Aceptar mision',
+                message: 'La asignacion queda confirmada en la agenda.',
+              ),
+              StaticAction(
+                icon: Icons.close_rounded,
+                label: 'Rechazar',
+                message: 'Se solicita revision al operador.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra nuevas, activas o finalizadas.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Mision SG-1048',
+                subtitle: 'Citation CJ3 | salida 09:30 | Toluca',
+                status: 'Pendiente',
+                amount: 'TLC-CUN',
+              ),
+              StaticRecord(
+                title: 'Mision SG-1039',
+                subtitle: 'Servicio completado con evidencia cargada',
+                status: 'Finalizado',
+                amount: 'MTY-SJD',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Respuesta',
+                description: 'Aceptar, rechazar o pedir revision.',
+              ),
+              MarketplaceModule(
+                title: 'Contexto',
+                description: 'Ruta, briefing, amenidades y operador.',
+              ),
+              MarketplaceModule(
+                title: 'Cierre',
+                description: 'Evidencia, rating y auditoria de servicio.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
+          label: 'Operacion del dia',
+          shortLabel: 'Agenda',
+          groupLabel: 'Operacion',
+          description: 'Timeline diario de briefing, FBO y servicio.',
+          icon: Icons.calendar_today_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Operacion del dia',
+            subtitle:
+                'Agenda, briefing, check-in y secuencia de momentos de servicio.',
+            roleLabel: 'Sobrecargo',
+            heroTitle: 'Linea de tiempo para la operacion diaria',
+            heroSubtitle:
+                'Vista estilo portal web para ejecutar el dia con claridad, horarios y responsables.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Reporte',
+                value: '07:45',
+                helper: 'Hora objetivo de llegada al FBO.',
+              ),
+              MarketplaceMetric(
+                label: 'Servicio',
+                value: '09:30',
+                helper: 'Inicio estimado de embarque y cabina.',
+              ),
+              MarketplaceMetric(
+                label: 'Estado',
+                value: 'Preparacion',
+                helper: 'Checklist casi completo para salida.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.login_rounded,
+                label: 'Iniciar check-in',
+                message: 'Activa el timeline de llegada y briefing.',
+              ),
+              StaticAction(
+                icon: Icons.event_note_rounded,
+                label: 'Actualizar agenda',
+                message: 'Sincroniza hora, base o cabina.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra solo lo pendiente por operar.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Check-in FBO Toluca',
+                subtitle: 'Llegada requerida 07:45 | briefing operador 08:00',
+                status: 'Pendiente',
+                amount: '07:45',
+              ),
+              StaticRecord(
+                title: 'Servicio a bordo',
+                subtitle: 'Catering ligero, WiFi y amenidades VIP',
+                status: 'Activo',
+                amount: '09:30',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Timeline',
+                description: 'Desde briefing hasta cierre de servicio.',
+              ),
+              MarketplaceModule(
+                title: 'Cabina',
+                description: 'Amenidades, catering y pasajeros especiales.',
+              ),
+              MarketplaceModule(
+                title: 'Coordinacion',
+                description: 'Interaccion con operador y alertas del vuelo.',
+              ),
+            ],
+          ),
         ),
         RoleWorkspaceItem(
           label: 'Disponibilidad',
-          shortLabel: 'Agenda',
-          icon: Icons.calendar_month_rounded,
-          screen: _ProviderCalendarScreen(),
-        ),
-        RoleWorkspaceItem(
-          label: 'Solicitudes',
-          shortLabel: 'Solic.',
-          icon: Icons.request_quote_rounded,
-          screen: _ProviderRequestsScreen(),
-        ),
-        RoleWorkspaceItem(
-          label: 'Operacion',
-          shortLabel: 'Vuelos',
+          shortLabel: 'Disp.',
+          groupLabel: 'Operacion',
+          description: 'Bloqueos, horarios y cobertura de base.',
           icon: Icons.event_available_rounded,
-          screen: _ProviderOperationsScreen(),
+          screen: _WorkspaceModuleScreen(
+            title: 'Disponibilidad',
+            subtitle:
+                'Horarios disponibles, bloqueos y cobertura operativa del sobrecargo.',
+            roleLabel: 'Sobrecargo',
+            heroTitle: 'Publica disponibilidad para nuevas misiones',
+            heroSubtitle:
+                'El operador asigna con base en agenda, base, idiomas y certificaciones visibles.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Base',
+                value: 'Toluca',
+                helper: 'Cobertura principal de operacion.',
+              ),
+              MarketplaceMetric(
+                label: 'Cobertura',
+                value: 'Centro / Bajio',
+                helper: 'Radio preferente para nuevas asignaciones.',
+              ),
+              MarketplaceMetric(
+                label: 'Estado',
+                value: 'Disponible',
+                helper: 'Listo para recibir una nueva mision.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.calendar_month_rounded,
+                label: 'Actualizar agenda',
+                message: 'Cambia ventanas, base y cobertura.',
+              ),
+              StaticAction(
+                icon: Icons.block_rounded,
+                label: 'Bloquear horario',
+                message: 'Registra descanso, medico o capacitacion.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra bloqueos y disponibilidad actual.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Disponible TLC',
+                subtitle: 'Lunes a viernes | 06:00 - 18:00',
+                status: 'Activo',
+                amount: 'TLC',
+              ),
+              StaticRecord(
+                title: 'Capacitacion recurrente',
+                subtitle: 'Bloqueo personal para certificacion',
+                status: 'Bloqueado',
+                amount: '2 dias',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Agenda de cabina',
+                description: 'Ventanas operativas y bloqueos personales.',
+              ),
+              MarketplaceModule(
+                title: 'Cobertura',
+                description: 'Base, region y restricciones de servicio.',
+              ),
+              MarketplaceModule(
+                title: 'Visibilidad',
+                description: 'Estado disponible para matching operativo.',
+              ),
+            ],
+          ),
         ),
         RoleWorkspaceItem(
-          label: 'Perfil',
+          label: 'Perfil de vuelo',
           shortLabel: 'Perfil',
-          icon: Icons.business_center_rounded,
-          screen: _ProviderProfileScreen(),
+          groupLabel: 'Cuenta',
+          description: 'Datos, experiencia, rating y certificaciones.',
+          icon: Icons.badge_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Perfil de vuelo',
+            subtitle:
+                'Perfil profesional del sobrecargo con base, documentos y readiness.',
+            roleLabel: 'Sobrecargo',
+            heroTitle: 'Mantiene visible tu expediente operativo',
+            heroSubtitle:
+                'Replica el portal de crew con informacion personal, idiomas, experiencia y estado documental.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Nivel',
+                value: 'Ejecutivo',
+                helper: 'Perfil listo para servicio premium.',
+              ),
+              MarketplaceMetric(
+                label: 'Idiomas',
+                value: 'ES / EN',
+                helper: 'Atencion corporativa e internacional.',
+              ),
+              MarketplaceMetric(
+                label: 'Rating',
+                value: '4.9/5',
+                helper: 'Calificacion consolidada de servicio.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.edit_rounded,
+                label: 'Editar datos',
+                message: 'Actualiza telefono, base y experiencia.',
+              ),
+              StaticAction(
+                icon: Icons.verified_rounded,
+                label: 'Actualizar certificacion',
+                message: 'Carga o ajusta certificaciones del perfil.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra solo documentos o validaciones.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Andrea Ruiz',
+                subtitle: 'Sobrecargo | base TLC | ingles avanzado',
+                status: 'Activo',
+                amount: '4.9/5',
+              ),
+              StaticRecord(
+                title: 'Certificacion CRM',
+                subtitle: 'Vigencia pendiente de revision administrativa',
+                status: 'Revision',
+                amount: '2026',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Perfil',
+                description: 'Datos, base, idiomas y experiencia.',
+              ),
+              MarketplaceModule(
+                title: 'Readiness',
+                description: 'Score operativo y estado del expediente.',
+              ),
+              MarketplaceModule(
+                title: 'Validaciones',
+                description: 'Revision administrativa de documentos.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
+          label: 'Documentos',
+          shortLabel: 'Docs',
+          groupLabel: 'Seguimiento',
+          description: 'Certificados, identificaciones y vencimientos.',
+          icon: Icons.folder_copy_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Documentos',
+            subtitle:
+                'Centro documental de cabina con vigencias, categorias y alertas.',
+            roleLabel: 'Sobrecargo',
+            heroTitle: 'Controla certificados y documentos por vencer',
+            heroSubtitle:
+                'La experiencia sigue el portal web de cabina con visibilidad clara para vigencia y cumplimiento.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Aprobados',
+                value: '5',
+                helper: 'Documentos validados por administracion.',
+              ),
+              MarketplaceMetric(
+                label: 'Pendientes',
+                value: '1',
+                helper: 'Archivo en revision documental.',
+              ),
+              MarketplaceMetric(
+                label: 'Vencimiento',
+                value: '20 dias',
+                helper: 'Curso recurrente mas cercano por expirar.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.upload_file_rounded,
+                label: 'Cargar documento',
+                message: 'Sube un archivo nuevo al expediente.',
+              ),
+              StaticAction(
+                icon: Icons.notifications_active_rounded,
+                label: 'Ver alertas',
+                message: 'Filtra vencimientos y rechazos.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra solo documentos criticos.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Pasaporte',
+                subtitle: 'Documento internacional validado',
+                status: 'Activo',
+                amount: 'Vigente',
+              ),
+              StaticRecord(
+                title: 'Curso recurrente',
+                subtitle: 'Requiere actualizacion antes de fin de mes',
+                status: 'Pendiente',
+                amount: '20 dias',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Vigencias',
+                description: 'Semaforo y proximidad de renovacion.',
+              ),
+              MarketplaceModule(
+                title: 'Categorias',
+                description: 'Certificados, identificaciones y cursos.',
+              ),
+              MarketplaceModule(
+                title: 'Expediente',
+                description: 'Revision y aprobacion administrativa.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
+          label: 'Incidencias',
+          shortLabel: 'Alertas',
+          groupLabel: 'Seguimiento',
+          description: 'Reportes de servicio, seguridad y pasajeros.',
+          icon: Icons.report_problem_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Incidencias',
+            subtitle:
+                'Registro de incidentes, evidencia y resolucion operativa del servicio.',
+            roleLabel: 'Sobrecargo',
+            heroTitle: 'Reporta incidencias con trazabilidad',
+            heroSubtitle:
+                'Conserva evidencia, prioridad, responsables y cierre dentro del flujo de cabina.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Abiertas',
+                value: '1',
+                helper: 'Caso activo en seguimiento del operador.',
+              ),
+              MarketplaceMetric(
+                label: 'Criticas',
+                value: '0',
+                helper: 'Sin incidentes de impacto alto hoy.',
+              ),
+              MarketplaceMetric(
+                label: 'Tiempo medio',
+                value: '24 min',
+                helper: 'Promedio reciente de respuesta inicial.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.add_alert_rounded,
+                label: 'Crear incidencia',
+                message: 'Registra el evento dentro del portal.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra abiertas, escaladas o cerradas.',
+              ),
+              StaticAction(
+                icon: Icons.photo_camera_rounded,
+                label: 'Subir evidencia',
+                message: 'Agrega fotos o notas del incidente.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Amenidad faltante',
+                subtitle: 'Catering especial no entregado en FBO',
+                status: 'Pendiente',
+                amount: 'Media',
+              ),
+              StaticRecord(
+                title: 'Demora de abordaje',
+                subtitle: 'Pasajero llego 18 minutos tarde',
+                status: 'Confirmado',
+                amount: '18 min',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Registro rapido',
+                description: 'Tipo, prioridad y descripcion del evento.',
+              ),
+              MarketplaceModule(
+                title: 'Evidencia',
+                description: 'Fotos, notas y datos del servicio.',
+              ),
+              MarketplaceModule(
+                title: 'Resolucion',
+                description:
+                    'Seguimiento del operador y cierre administrativo.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
+          label: 'Historial',
+          shortLabel: 'Historial',
+          groupLabel: 'Seguimiento',
+          description: 'Servicios realizados, horas y calificaciones.',
+          icon: Icons.history_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Historial',
+            subtitle:
+                'Servicios finalizados, ratings y auditoria de desempeno en cabina.',
+            roleLabel: 'Sobrecargo',
+            heroTitle: 'Consulta tu historial operativo y nivel de servicio',
+            heroSubtitle:
+                'Permite revisar rutas, evaluaciones, horas y consistencia del desempeno.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Servicios',
+                value: '18',
+                helper: 'Misiones completadas este mes.',
+              ),
+              MarketplaceMetric(
+                label: 'Horas',
+                value: '412 h',
+                helper: 'Carga operativa consolidada.',
+              ),
+              MarketplaceMetric(
+                label: 'Puntualidad',
+                value: '98%',
+                helper: 'Indicador de cumplimiento del servicio.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.download_rounded,
+                label: 'Exportar reporte',
+                message: 'Genera resumen del historial operativo.',
+              ),
+              StaticAction(
+                icon: Icons.visibility_rounded,
+                label: 'Ver detalle',
+                message: 'Abre evaluaciones y notas por servicio.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Filtra por fecha, estado o ruta.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'TLC -> CUN',
+                subtitle: 'Servicio finalizado sin incidencias',
+                status: 'Finalizado',
+                amount: '5.0',
+              ),
+              StaticRecord(
+                title: 'MTY -> SJD',
+                subtitle: 'Cliente corporativo | notas positivas',
+                status: 'Finalizado',
+                amount: '4.8',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Servicios',
+                description: 'Misiones y resultados por vuelo.',
+              ),
+              MarketplaceModule(
+                title: 'Desempeno',
+                description: 'Rating, puntualidad y comentarios.',
+              ),
+              MarketplaceModule(
+                title: 'Auditoria',
+                description: 'Historial visible para cabina y admin.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
+          label: 'Ajustes',
+          shortLabel: 'Ajustes',
+          groupLabel: 'Cuenta',
+          description: 'Preferencias, notificaciones y seguridad.',
+          icon: Icons.settings_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Ajustes',
+            subtitle:
+                'Configuracion personal del portal de cabina y notificaciones operativas.',
+            roleLabel: 'Sobrecargo',
+            heroTitle: 'Configura tu portal de cabina',
+            heroSubtitle:
+                'Gestiona alertas, base preferente, canal de contacto y privacidad operativa.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Push',
+                value: 'Activo',
+                helper: 'Misiones y cambios de horario notificados.',
+              ),
+              MarketplaceMetric(
+                label: 'Cobertura',
+                value: 'Centro / Bajio',
+                helper: 'Region preferente de operacion.',
+              ),
+              MarketplaceMetric(
+                label: 'Escalamiento',
+                value: 'Operador',
+                helper: 'Ruta primaria de soporte para incidentes.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.tune_rounded,
+                label: 'Cambiar preferencias',
+                message: 'Actualiza ajustes del portal crew.',
+              ),
+              StaticAction(
+                icon: Icons.phone_in_talk_rounded,
+                label: 'Metodo de contacto',
+                message: 'Configura telefono y alertas prioritarias.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra ajustes activos o pendientes.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Notificaciones push',
+                subtitle: 'Misiones, cambios de horario e incidencias',
+                status: 'Activo',
+                amount: 'On',
+              ),
+              StaticRecord(
+                title: 'Base preferente',
+                subtitle: 'Toluca con disponibilidad nacional',
+                status: 'Activo',
+                amount: 'TLC',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Alertas',
+                description: 'Push, email y prioridad por tipo de evento.',
+              ),
+              MarketplaceModule(
+                title: 'Cobertura',
+                description: 'Base preferente, horarios y region.',
+              ),
+              MarketplaceModule(
+                title: 'Privacidad',
+                description: 'Control del perfil y datos operativos.',
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -130,1588 +945,1116 @@ class _AdminWorkspaceScreen extends StatelessWidget {
     return const RoleWorkspaceShell(
       branchLabel: 'Administracion',
       roleLabel: 'Administrador',
-      title: 'SkyLuxe Administracion',
+      title: 'Sky Group Admin',
+      insightTitle: 'Control central de la plataforma',
+      insightDescription:
+          'Supervisa usuarios, indicadores, alertas y operacion general desde una vista ejecutiva.',
       items: [
         RoleWorkspaceItem(
           label: 'Dashboard',
           shortLabel: 'Inicio',
+          groupLabel: 'Ejecutivo',
+          description: 'KPIs, gobierno y estado general del marketplace.',
           icon: Icons.dashboard_rounded,
-          screen: _AdminHomeScreen(),
+          screen: AdminDashboardScreen(),
         ),
         RoleWorkspaceItem(
-          label: 'Usuarios',
+          label: 'Importaciones / Exportaciones',
+          shortLabel: 'Transfer',
+          groupLabel: 'Ejecutivo',
+          description: 'Control de cargas, descargas y gobierno de datos.',
+          icon: Icons.import_export_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Importaciones y exportaciones',
+            subtitle:
+                'Transferencia administrativa de datos, catálogos y reportes.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Gobierna cargas masivas y exportaciones del sistema',
+            heroSubtitle:
+                'Seccion inspirada en el portal web para mover informacion con trazabilidad y control.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Jobs',
+                value: '6 hoy',
+                helper: 'Procesos de importacion y exportacion recientes.',
+              ),
+              MarketplaceMetric(
+                label: 'Errores',
+                value: '1',
+                helper: 'Archivo con validacion pendiente.',
+              ),
+              MarketplaceMetric(
+                label: 'Esquemas',
+                value: '12',
+                helper: 'Colecciones listas para transferencia.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.upload_file_rounded,
+                label: 'Crear importacion',
+                message: 'Carga masiva lista para validarse.',
+              ),
+              StaticAction(
+                icon: Icons.download_rounded,
+                label: 'Exportar reporte',
+                message: 'Prepara un archivo administrativo.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra exitos, errores o pendientes.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'flight_requests.csv',
+                subtitle: 'Solicitud de carga de marketplace',
+                status: 'Pendiente',
+                amount: '1,240 filas',
+              ),
+              StaticRecord(
+                title: 'pagos_abril.xlsx',
+                subtitle: 'Exportacion lista para conciliacion',
+                status: 'Confirmado',
+                amount: 'Exportado',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Esquemas',
+                description: 'Colecciones, columnas y formatos esperados.',
+              ),
+              MarketplaceModule(
+                title: 'Validacion',
+                description: 'Errores, previsualizacion y auditoria.',
+              ),
+              MarketplaceModule(
+                title: 'Historial',
+                description: 'Jobs ejecutados y trazabilidad del admin.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
+          label: 'Usuarios y roles',
           shortLabel: 'Usuarios',
+          groupLabel: 'Ejecutivo',
+          description: 'Accesos, permisos y gobierno transversal de cuentas.',
           icon: Icons.people_alt_rounded,
-          screen: _AdminUsersScreen(),
+          screen: _WorkspaceModuleScreen(
+            title: 'Usuarios y roles',
+            subtitle:
+                'Gestion central de accesos para clientes, operadores, sobrecargos y admins.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Administra roles, permisos y estatus de acceso',
+            heroSubtitle:
+                'Seccion alineada al portal ejecutivo para altas, bloqueos y control de identidad.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Usuarios',
+                value: '379',
+                helper: 'Cuentas registradas en la plataforma.',
+              ),
+              MarketplaceMetric(
+                label: 'Admins',
+                value: '6',
+                helper: 'Equipo interno con permisos ejecutivos.',
+              ),
+              MarketplaceMetric(
+                label: 'Bloqueados',
+                value: '4',
+                helper: 'Cuentas suspendidas temporalmente.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.person_add_rounded,
+                label: 'Crear usuario',
+                message: 'Alta de usuario lista para capturarse.',
+              ),
+              StaticAction(
+                icon: Icons.verified_user_rounded,
+                label: 'Activar cuenta',
+                message: 'Cuenta habilitada para operar.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Filtra por rol, estado o branch.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Mariana Torres',
+                subtitle: 'Cliente premium con demo activa',
+                status: 'Activo',
+                amount: 'Cliente',
+              ),
+              StaticRecord(
+                title: 'Ana Lira',
+                subtitle: 'Sobrecargo con expediente en revision',
+                status: 'Pendiente',
+                amount: 'Crew',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Roles',
+                description: 'Cliente, operador, crew y admin.',
+              ),
+              MarketplaceModule(
+                title: 'Permisos',
+                description: 'Acceso segun funcion dentro del negocio.',
+              ),
+              MarketplaceModule(
+                title: 'Estado',
+                description: 'Activo, revision, bloqueado o suspendido.',
+              ),
+            ],
+          ),
         ),
         RoleWorkspaceItem(
-          label: 'Proveedores',
-          shortLabel: 'Prov.',
-          icon: Icons.groups_rounded,
-          screen: _AdminProvidersScreen(),
-        ),
-        RoleWorkspaceItem(
-          label: 'Aeronaves',
-          shortLabel: 'Flota',
-          icon: Icons.flight_class_rounded,
-          screen: _AdminAircraftScreen(),
-        ),
-        RoleWorkspaceItem(
-          label: 'Solicitudes',
-          shortLabel: 'Solic.',
-          icon: Icons.request_quote_rounded,
-          screen: _AdminRequestsScreen(),
-        ),
-        RoleWorkspaceItem(
-          label: 'Cotizaciones',
-          shortLabel: 'Cotiza',
-          icon: Icons.receipt_long_rounded,
-          screen: _AdminQuotesScreen(),
-        ),
-        RoleWorkspaceItem(
-          label: 'Reportes',
-          shortLabel: 'Reportes',
+          label: 'Analytics',
+          shortLabel: 'Analytics',
+          groupLabel: 'Ejecutivo',
+          description: 'Conversion, utilizacion de flota y KPIs globales.',
           icon: Icons.query_stats_rounded,
-          screen: _AdminReportsScreen(),
+          screen: _WorkspaceModuleScreen(
+            title: 'Analytics',
+            subtitle:
+                'KPIs ejecutivos para ventas, reservas, operacion y rentabilidad.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Lee el negocio con analitica util y accionable',
+            heroSubtitle:
+                'Concentra conversion, demanda, tiempos de asignacion, margen y productividad operativa.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Conversion',
+                value: '38%',
+                helper: 'De cotizacion a reserva confirmada.',
+              ),
+              MarketplaceMetric(
+                label: 'Utilizacion',
+                value: '84%',
+                helper: 'Uso consolidado de flota durante el periodo.',
+              ),
+              MarketplaceMetric(
+                label: 'Asignacion',
+                value: '11 min',
+                helper: 'Tiempo medio de respuesta operativa.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.download_rounded,
+                label: 'Exportar reporte',
+                message: 'Genera archivo ejecutivo con KPIs.',
+              ),
+              StaticAction(
+                icon: Icons.date_range_rounded,
+                label: 'Cambiar periodo',
+                message: 'Filtra el rango de tiempo a analizar.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra vistas por area o rol.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Conversion comercial',
+                subtitle: 'Cotizacion a reserva confirmada del mes',
+                status: 'Activo',
+                amount: '38%',
+              ),
+              StaticRecord(
+                title: 'Utilizacion flota',
+                subtitle: 'Horas activas sobre inventario disponible',
+                status: 'Confirmado',
+                amount: '84%',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Comercial',
+                description: 'Conversion, ticket y precio medio.',
+              ),
+              MarketplaceModule(
+                title: 'Operacion',
+                description: 'SLA, ocupacion y salud del sistema.',
+              ),
+              MarketplaceModule(
+                title: 'Finanzas',
+                description: 'Margen, fees y payouts agregados.',
+              ),
+            ],
+          ),
         ),
         RoleWorkspaceItem(
           label: 'Configuracion',
           shortLabel: 'Config',
+          groupLabel: 'Ejecutivo',
+          description: 'Reglas del sistema, demos y parametros generales.',
           icon: Icons.settings_rounded,
-          screen: _AdminSettingsScreen(),
-        ),
-      ],
-    );
-  }
-}
-
-class _ClientHomeScreen extends StatelessWidget {
-  const _ClientHomeScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Inicio cliente',
-      subtitle: 'Resumen para buscar, cotizar y reservar vuelos privados.',
-      roleLabel: 'Cliente',
-      heroTitle: 'Cotiza y reserva vuelos privados en pocos pasos',
-      heroSubtitle:
-          'La pantalla inicial muestra demo activa, proximas acciones, cotizaciones recientes y acceso directo al flujo de busqueda.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Demo',
-          value: '12 dias',
-          helper: 'Periodo gratuito activo antes de requerir plan.',
-        ),
-        MarketplaceMetric(
-          label: 'Cotizaciones',
-          value: '3 abiertas',
-          helper: 'Propuestas esperando decision del cliente.',
-        ),
-        MarketplaceMetric(
-          label: 'Viajes',
-          value: '1 confirmado',
-          helper: 'Servicio con seguimiento y asistente ejecutivo.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.search_rounded,
-          label: 'Buscar vuelo',
-          message: 'Abre Buscar vuelos para crear una solicitud.',
-        ),
-        StaticAction(
-          icon: Icons.workspace_premium_rounded,
-          label: 'Ver plan',
-          message: 'Estado de membresia listo para conectar pagos.',
-        ),
-        StaticAction(
-          icon: Icons.support_agent_rounded,
-          label: 'Asistente',
-          message: 'Asistente ejecutivo listo para soporte VIP.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Toluca -> Cancun',
-          subtitle: '6 pasajeros | salida manana 09:30',
-          status: 'Pendiente',
-          amount: '\$18,900 USD',
-        ),
-        StaticRecord(
-          title: 'Monterrey -> Los Cabos',
-          subtitle: '4 pasajeros | jet ligero recomendado',
-          status: 'Cotizado',
-          amount: '\$21,400 USD',
-        ),
-        StaticRecord(
-          title: 'Guadalajara -> Houston',
-          subtitle: 'Ruta internacional con revision operativa',
-          status: 'En revision',
-          amount: '\$34,700 USD',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Buscar vuelos',
-          description:
-              'Origen, destino, fecha, hora y pasajeros desde una vista simple.',
-        ),
-        MarketplaceModule(
-          title: 'Comparar aeronaves',
-          description:
-              'Precio estimado, capacidad, operador, autonomia y disponibilidad.',
-        ),
-        MarketplaceModule(
-          title: 'Reservar o solicitar',
-          description:
-              'El cliente puede avanzar a cotizacion o reservacion segun el caso.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ClientQuotesScreen extends StatelessWidget {
-  const _ClientQuotesScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Mis cotizaciones',
-      subtitle: 'Propuestas recibidas, pendientes, aceptadas y vencidas.',
-      roleLabel: 'Cliente',
-      heroTitle: 'Cotizaciones claras para decidir rapido',
-      heroSubtitle:
-          'Cada propuesta concentra ruta, aeronave sugerida, precio estimado, operador y vigencia.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Pendientes',
-          value: '2',
-          helper: 'Esperando respuesta de proveedor.',
-        ),
-        MarketplaceMetric(
-          label: 'Aceptadas',
-          value: '1',
-          helper: 'Lista para confirmar pago o reserva.',
-        ),
-        MarketplaceMetric(
-          label: 'Vigencia',
-          value: '24 h',
-          helper: 'Tiempo promedio antes de actualizar tarifa.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.compare_arrows_rounded,
-          label: 'Comparar',
-          message: 'Comparador de cotizaciones listo.',
-        ),
-        StaticAction(
-          icon: Icons.check_circle_rounded,
-          label: 'Aceptar',
-          message: 'Aceptacion preparada para conectar backend.',
-        ),
-        StaticAction(
-          icon: Icons.close_rounded,
-          label: 'Rechazar',
-          message: 'Rechazo registrado como accion estatica.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Citation CJ3 | TLC -> CUN',
-          subtitle: 'Operador Red Charter | vigencia 18 h',
-          status: 'Cotizado',
-          amount: '\$18,900 USD',
-        ),
-        StaticRecord(
-          title: 'Learjet 45 | MTY -> SJD',
-          subtitle: 'Incluye pernocta y gastos nacionales',
-          status: 'Pendiente',
-          amount: '\$21,400 USD',
-        ),
-        StaticRecord(
-          title: 'Challenger 604 | GDL -> IAH',
-          subtitle: 'Requiere validacion internacional',
-          status: 'En revision',
-          amount: '\$34,700 USD',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Detalle de propuesta',
-          description: 'Aeronave, operador, costo, notas y vigencia.',
-        ),
-        MarketplaceModule(
-          title: 'Estatus comercial',
-          description: 'Pendiente, cotizada, aceptada, rechazada o vencida.',
-        ),
-        MarketplaceModule(
-          title: 'Accion rapida',
-          description: 'Aceptar, pedir ajuste o solicitar llamada ejecutiva.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ClientTripsScreen extends StatelessWidget {
-  const _ClientTripsScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Mis viajes',
-      subtitle: 'Reservas confirmadas, seguimiento y viajes anteriores.',
-      roleLabel: 'Cliente',
-      heroTitle: 'Historial y seguimiento de vuelos',
-      heroSubtitle:
-          'El cliente ve vuelos solicitados, confirmados, finalizados y el estado operativo del servicio.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Confirmados',
-          value: '1',
-          helper: 'Vuelo con aeronave asignada.',
-        ),
-        MarketplaceMetric(
-          label: 'En seguimiento',
-          value: '2',
-          helper: 'Servicios con asistente y timeline.',
-        ),
-        MarketplaceMetric(
-          label: 'Historial',
-          value: '8',
-          helper: 'Rutas anteriores listas para repetir.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.refresh_rounded,
-          label: 'Repetir ruta',
-          message: 'Ruta preparada para nueva cotizacion.',
-        ),
-        StaticAction(
-          icon: Icons.route_rounded,
-          label: 'Ver seguimiento',
-          message: 'Seguimiento estatico abierto.',
-        ),
-        StaticAction(
-          icon: Icons.receipt_long_rounded,
-          label: 'Ver recibo',
-          message: 'Recibo listo para conectar PDF.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'TLC -> CUN',
-          subtitle: 'Confirmado | FBO Toluca | 09:30',
-          status: 'Confirmado',
-          amount: '\$18,900 USD',
-        ),
-        StaticRecord(
-          title: 'CUN -> TLC',
-          subtitle: 'Regreso sugerido | tripulacion validada',
-          status: 'Pendiente',
-          amount: '\$17,800 USD',
-        ),
-        StaticRecord(
-          title: 'MTY -> TLC',
-          subtitle: 'Finalizado | marzo 2026',
-          status: 'Finalizado',
-          amount: '\$12,600 USD',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Seguimiento operativo',
-          description: 'FBO, tripulacion, horarios y estado de servicio.',
-        ),
-        MarketplaceModule(
-          title: 'Historial de rutas',
-          description: 'Repetir viajes frecuentes con menos friccion.',
-        ),
-        MarketplaceModule(
-          title: 'Documentos',
-          description: 'Recibos, cotizaciones, politicas y comprobantes.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ProviderHomeScreen extends StatelessWidget {
-  const _ProviderHomeScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Dashboard proveedor',
-      subtitle: 'Operacion diaria de flota, solicitudes y disponibilidad.',
-      roleLabel: 'Proveedor',
-      heroTitle: 'Control operativo para vender disponibilidad real',
-      heroSubtitle:
-          'El proveedor ve aeronaves activas, solicitudes recibidas, vuelos asignados e ingresos estimados.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Aeronaves activas',
-          value: '7',
-          helper: 'Unidades visibles para el marketplace.',
-        ),
-        MarketplaceMetric(
-          label: 'Solicitudes',
-          value: '14',
-          helper: 'Rutas esperando aceptar, rechazar o contraofertar.',
-        ),
-        MarketplaceMetric(
-          label: 'Ingresos estimados',
-          value: '\$84k',
-          helper: 'Pipeline comercial del mes.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.flight_rounded,
-          label: 'Nueva aeronave',
-          message: 'Formulario de alta preparado.',
-        ),
-        StaticAction(
-          icon: Icons.calendar_month_rounded,
-          label: 'Actualizar agenda',
-          message: 'Disponibilidad lista para editar.',
-        ),
-        StaticAction(
-          icon: Icons.request_quote_rounded,
-          label: 'Responder solicitudes',
-          message: 'Bandeja de solicitudes abierta.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Citation XLS+',
-          subtitle: 'Disponible hoy | base TLC',
-          status: 'Activo',
-          amount: '\$4,900/hr',
-        ),
-        StaticRecord(
-          title: 'King Air 350',
-          subtitle: 'Mantenimiento preventivo | 2 dias',
-          status: 'Bloqueado',
-          amount: '\$2,100/hr',
-        ),
-        StaticRecord(
-          title: 'Challenger 604',
-          subtitle: 'Solicitud GDL -> IAH',
-          status: 'Pendiente',
-          amount: '\$34,700 USD',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Flota activa',
-          description:
-              'Alta, edicion, fotos, documentos, tarifas y amenidades.',
-        ),
-        MarketplaceModule(
-          title: 'Disponibilidad',
-          description: 'Calendario por aeronave con bloqueos y mantenimiento.',
-        ),
-        MarketplaceModule(
-          title: 'Solicitudes',
-          description: 'Aceptar, rechazar o contraofertar rutas entrantes.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ProviderAircraftScreen extends StatelessWidget {
-  const _ProviderAircraftScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Aeronaves',
-      subtitle: 'Alta, edicion y control comercial de flota.',
-      roleLabel: 'Proveedor',
-      heroTitle: 'Gestiona la flota que aparece en el marketplace',
-      heroSubtitle:
-          'Cada aeronave muestra matricula, capacidad, tarifa por hora, estado, fotos y servicios incluidos.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Publicadas',
-          value: '7',
-          helper: 'Aeronaves visibles para clientes.',
-        ),
-        MarketplaceMetric(
-          label: 'En revision',
-          value: '2',
-          helper: 'Pendientes de documentos o fotos.',
-        ),
-        MarketplaceMetric(
-          label: 'Bloqueadas',
-          value: '1',
-          helper: 'Fuera de disponibilidad comercial.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.add_rounded,
-          label: 'Alta aeronave',
-          message: 'Alta estatica lista para conectar.',
-        ),
-        StaticAction(
-          icon: Icons.photo_camera_rounded,
-          label: 'Cargar fotos',
-          message: 'Carga de imagenes preparada.',
-        ),
-        StaticAction(
-          icon: Icons.price_change_rounded,
-          label: 'Editar tarifa',
-          message: 'Tarifas listas para guardar.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'XA-SKY | Citation CJ3',
-          subtitle: '7 pasajeros | WiFi | base TLC',
-          status: 'Activo',
-          amount: '\$3,900/hr',
-        ),
-        StaticRecord(
-          title: 'XB-LUX | Learjet 45',
-          subtitle: '8 pasajeros | catering | base MTY',
-          status: 'Activo',
-          amount: '\$4,400/hr',
-        ),
-        StaticRecord(
-          title: 'N604SG | Challenger 604',
-          subtitle: '12 pasajeros | internacional',
-          status: 'Revision',
-          amount: '\$7,900/hr',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Ficha tecnica',
-          description: 'Modelo, matricula, capacidad, autonomia y base.',
-        ),
-        MarketplaceModule(
-          title: 'Comercial',
-          description:
-              'Tarifa por hora, minimos, gastos y servicios incluidos.',
-        ),
-        MarketplaceModule(
-          title: 'Media y documentos',
-          description: 'Fotos, seguros, permisos y vencimientos.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ProviderRequestsScreen extends StatelessWidget {
-  const _ProviderRequestsScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Solicitudes recibidas',
-      subtitle: 'Rutas entrantes para aceptar, rechazar o contraofertar.',
-      roleLabel: 'Proveedor',
-      heroTitle: 'Responde solicitudes con rapidez operativa',
-      heroSubtitle:
-          'Cada solicitud incluye ruta, fecha, hora, pasajeros, precio sugerido y acciones comerciales.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Nuevas',
-          value: '5',
-          helper: 'Requieren primera respuesta.',
-        ),
-        MarketplaceMetric(
-          label: 'Contraofertas',
-          value: '3',
-          helper: 'En negociacion con cliente.',
-        ),
-        MarketplaceMetric(
-          label: 'SLA',
-          value: '12 min',
-          helper: 'Tiempo promedio de respuesta.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.check_rounded,
-          label: 'Aceptar',
-          message: 'Solicitud aceptada de forma estatica.',
-        ),
-        StaticAction(
-          icon: Icons.close_rounded,
-          label: 'Rechazar',
-          message: 'Solicitud rechazada de forma estatica.',
-        ),
-        StaticAction(
-          icon: Icons.swap_horiz_rounded,
-          label: 'Contraofertar',
-          message: 'Contraoferta preparada.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'TLC -> CUN',
-          subtitle: '6 pasajeros | manana 09:30 | Citation CJ3',
-          status: 'Nueva',
-          amount: '\$18,900 USD',
-        ),
-        StaticRecord(
-          title: 'MTY -> SJD',
-          subtitle: '4 pasajeros | salida viernes | Learjet 45',
-          status: 'Pendiente',
-          amount: '\$21,400 USD',
-        ),
-        StaticRecord(
-          title: 'GDL -> IAH',
-          subtitle: '12 pasajeros | internacional | Challenger 604',
-          status: 'Revision',
-          amount: '\$34,700 USD',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Aceptar',
-          description: 'Confirma disponibilidad y envia oferta al cliente.',
-        ),
-        MarketplaceModule(
-          title: 'Rechazar',
-          description:
-              'Registra motivo: mantenimiento, ocupada o ruta no viable.',
-        ),
-        MarketplaceModule(
-          title: 'Contraofertar',
-          description: 'Ajusta aeronave, horario, tarifa o condiciones.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ProviderOperationsScreen extends StatelessWidget {
-  const _ProviderOperationsScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Operacion',
-      subtitle: 'Vuelos proximos, en curso, finalizados e historial operativo.',
-      roleLabel: 'Proveedor',
-      heroTitle: 'Controla vuelos asignados de punta a punta',
-      heroSubtitle:
-          'La vista operativa concentra agenda, tripulacion, estado de vuelo, FBO y notas internas.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Proximos',
-          value: '4',
-          helper: 'Servicios confirmados por operar.',
-        ),
-        MarketplaceMetric(
-          label: 'En curso',
-          value: '1',
-          helper: 'Vuelo activo con seguimiento.',
-        ),
-        MarketplaceMetric(
-          label: 'Finalizados',
-          value: '23',
-          helper: 'Historial del mes.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.play_circle_rounded,
-          label: 'Iniciar vuelo',
-          message: 'Vuelo marcado como en curso.',
-        ),
-        StaticAction(
-          icon: Icons.flag_rounded,
-          label: 'Finalizar',
-          message: 'Vuelo marcado como finalizado.',
-        ),
-        StaticAction(
-          icon: Icons.note_add_rounded,
-          label: 'Agregar nota',
-          message: 'Nota operativa preparada.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'TLC -> CUN',
-          subtitle: 'FBO Toluca | capitan asignado',
-          status: 'Confirmado',
-          amount: '09:30',
-        ),
-        StaticRecord(
-          title: 'CUN -> TLC',
-          subtitle: 'Regreso | tripulacion pendiente',
-          status: 'Pendiente',
-          amount: '18:10',
-        ),
-        StaticRecord(
-          title: 'MTY -> TLC',
-          subtitle: 'Finalizado sin incidencias',
-          status: 'Finalizado',
-          amount: 'Ayer',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Vuelos proximos',
-          description: 'Agenda operativa y preparacion del servicio.',
-        ),
-        MarketplaceModule(
-          title: 'Vuelos en curso',
-          description: 'Estado, notas y actualizaciones para cliente/admin.',
-        ),
-        MarketplaceModule(
-          title: 'Historial',
-          description: 'Finalizados, cancelados e incidencias operativas.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ProviderProfileScreen extends StatelessWidget {
-  const _ProviderProfileScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Perfil proveedor',
-      subtitle: 'Informacion empresarial, documentos, usuarios y plan activo.',
-      roleLabel: 'Proveedor',
-      heroTitle: 'Perfil comercial y operativo del proveedor',
-      heroSubtitle:
-          'Centraliza razon social, contactos, documentos, comisiones, plan y permisos internos.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Plan',
-          value: 'Pro activo',
-          helper: 'Membresia operativa vigente.',
-        ),
-        MarketplaceMetric(
-          label: 'Documentos',
-          value: '92%',
-          helper: 'Expediente casi completo.',
-        ),
-        MarketplaceMetric(
-          label: 'Usuarios',
-          value: '4',
-          helper: 'Equipo con acceso al panel.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.edit_rounded,
-          label: 'Editar perfil',
-          message: 'Perfil listo para editar.',
-        ),
-        StaticAction(
-          icon: Icons.upload_file_rounded,
-          label: 'Subir documento',
-          message: 'Carga documental preparada.',
-        ),
-        StaticAction(
-          icon: Icons.group_add_rounded,
-          label: 'Invitar usuario',
-          message: 'Invitacion preparada.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Sky Operator SA de CV',
-          subtitle: 'Proveedor aprobado | Mexico',
-          status: 'Activo',
-          amount: 'Pro',
-        ),
-        StaticRecord(
-          title: 'Seguro RC aeronaves',
-          subtitle: 'Vence en 42 dias',
-          status: 'Revision',
-          amount: 'PDF',
-        ),
-        StaticRecord(
-          title: 'Comision marketplace',
-          subtitle: 'Tarifa vigente por vuelo confirmado',
-          status: 'Activo',
-          amount: '11%',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Empresa',
-          description: 'Razon social, RFC, contacto comercial y operaciones.',
-        ),
-        MarketplaceModule(
-          title: 'Documentos',
-          description: 'Seguros, certificados, permisos y vencimientos.',
-        ),
-        MarketplaceModule(
-          title: 'Plan y usuarios',
-          description: 'Suscripcion, permisos y equipo interno.',
-        ),
-      ],
-    );
-  }
-}
-
-class _AdminHomeScreen extends StatelessWidget {
-  const _AdminHomeScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Dashboard admin',
-      subtitle: 'Vision general del negocio y operacion del marketplace.',
-      roleLabel: 'Administrador',
-      heroTitle: 'Control total de usuarios, vuelos y conversion comercial',
-      heroSubtitle:
-          'El admin ve solicitudes, vuelos confirmados, proveedores activos, aeronaves, ingresos, comisiones y alertas.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Solicitudes',
-          value: '128',
-          helper: 'Rutas recibidas este mes.',
-        ),
-        MarketplaceMetric(
-          label: 'Vuelos confirmados',
-          value: '36',
-          helper: 'Reservas con aeronave asignada.',
-        ),
-        MarketplaceMetric(
-          label: 'Comision estimada',
-          value: '\$42k',
-          helper: 'Ingreso de marketplace proyectado.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.warning_rounded,
-          label: 'Ver alertas',
-          message: 'Alertas operativas listas.',
-        ),
-        StaticAction(
-          icon: Icons.groups_rounded,
-          label: 'Validar proveedor',
-          message: 'Validacion de proveedor preparada.',
-        ),
-        StaticAction(
-          icon: Icons.query_stats_rounded,
-          label: 'Abrir reporte',
-          message: 'Reporte ejecutivo listo.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Proveedor pendiente',
-          subtitle: 'Aero Norte requiere revision documental',
-          status: 'Revision',
-          amount: 'Hoy',
-        ),
-        StaticRecord(
-          title: 'Solicitud critica',
-          subtitle: 'GDL -> IAH | salida en 6 horas',
-          status: 'Pendiente',
-          amount: '\$34,700',
-        ),
-        StaticRecord(
-          title: 'Pago recibido',
-          subtitle: 'Cliente corporativo | plan Pro anual',
-          status: 'Confirmado',
-          amount: '\$2,490',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Monitoreo comercial',
-          description: 'Cotizaciones, reservas, conversion y pagos.',
-        ),
-        MarketplaceModule(
-          title: 'Control operativo',
-          description: 'Proveedores, aeronaves, disponibilidad y alertas.',
-        ),
-        MarketplaceModule(
-          title: 'Gobierno de plataforma',
-          description: 'Usuarios, roles, demos, suscripciones y configuracion.',
-        ),
-      ],
-    );
-  }
-}
-
-class _AdminProvidersScreen extends StatelessWidget {
-  const _AdminProvidersScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Proveedores',
-      subtitle: 'Alta, validacion, documentos, performance y estado comercial.',
-      roleLabel: 'Administrador',
-      heroTitle: 'Gestiona proveedores certificados',
-      heroSubtitle:
-          'Controla aprobaciones, disponibilidad general, nivel de respuesta y expediente documental.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Activos',
-          value: '47',
-          helper: 'Proveedores aprobados para operar.',
-        ),
-        MarketplaceMetric(
-          label: 'Pendientes',
-          value: '8',
-          helper: 'Esperan validacion documental.',
-        ),
-        MarketplaceMetric(
-          label: 'Respuesta',
-          value: '14 min',
-          helper: 'Promedio de la red.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.verified_rounded,
-          label: 'Aprobar',
-          message: 'Proveedor aprobado en modo estatico.',
-        ),
-        StaticAction(
-          icon: Icons.block_rounded,
-          label: 'Bloquear',
-          message: 'Bloqueo preparado para backend.',
-        ),
-        StaticAction(
-          icon: Icons.description_rounded,
-          label: 'Ver documentos',
-          message: 'Expediente documental abierto.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Sky Operator',
-          subtitle: '7 aeronaves | respuesta 9 min',
-          status: 'Activo',
-          amount: '92%',
-        ),
-        StaticRecord(
-          title: 'Aero Norte',
-          subtitle: 'Documentos incompletos',
-          status: 'Revision',
-          amount: '68%',
-        ),
-        StaticRecord(
-          title: 'Executive Wings',
-          subtitle: 'Performance alto | 12 vuelos',
-          status: 'Activo',
-          amount: '98%',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Validacion',
-          description: 'Documentos, seguros, permisos y aprobacion comercial.',
-        ),
-        MarketplaceModule(
-          title: 'Performance',
-          description: 'Respuesta, aceptacion, cancelaciones e ingresos.',
-        ),
-        MarketplaceModule(
-          title: 'Disponibilidad global',
-          description: 'Vista consolidada de flota por proveedor.',
-        ),
-      ],
-    );
-  }
-}
-
-class _AdminAircraftScreen extends StatelessWidget {
-  const _AdminAircraftScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Aeronaves',
-      subtitle: 'Control administrativo de flota activa y en revision.',
-      roleLabel: 'Administrador',
-      heroTitle: 'Supervisa aeronaves antes de liberarlas al marketplace',
-      heroSubtitle:
-          'Revisa modelo, matricula, capacidad, documentos, fotos, disponibilidad y estado comercial.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Activas',
-          value: '126',
-          helper: 'Aeronaves visibles en resultados.',
-        ),
-        MarketplaceMetric(
-          label: 'En revision',
-          value: '14',
-          helper: 'Esperan aprobacion documental.',
-        ),
-        MarketplaceMetric(
-          label: 'Bloqueadas',
-          value: '6',
-          helper: 'Fuera de inventario comercial.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.check_circle_rounded,
-          label: 'Liberar',
-          message: 'Aeronave liberada de forma estatica.',
-        ),
-        StaticAction(
-          icon: Icons.lock_rounded,
-          label: 'Bloquear',
-          message: 'Aeronave bloqueada de forma estatica.',
-        ),
-        StaticAction(
-          icon: Icons.visibility_rounded,
-          label: 'Ver ficha',
-          message: 'Ficha ejecutiva preparada.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Citation CJ3 | XA-SKY',
-          subtitle: '7 pasajeros | proveedor Sky Operator',
-          status: 'Activo',
-          amount: '\$3,900/hr',
-        ),
-        StaticRecord(
-          title: 'Challenger 604 | N604SG',
-          subtitle: 'Documentos internacionales por revisar',
-          status: 'Revision',
-          amount: '\$7,900/hr',
-        ),
-        StaticRecord(
-          title: 'King Air 350 | XB-KNG',
-          subtitle: 'Mantenimiento programado',
-          status: 'Bloqueado',
-          amount: '\$2,100/hr',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Ficha',
-          description: 'Modelo, matricula, pasajeros, autonomia y base.',
-        ),
-        MarketplaceModule(
-          title: 'Documentos',
-          description: 'Seguros, certificados, permisos y fechas de vigencia.',
-        ),
-        MarketplaceModule(
-          title: 'Liberacion comercial',
-          description: 'Control para aparecer o no en resultados.',
-        ),
-      ],
-    );
-  }
-}
-
-class _AdminRequestsScreen extends StatelessWidget {
-  const _AdminRequestsScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Solicitudes',
-      subtitle: 'Todas las solicitudes del sistema con filtros operativos.',
-      roleLabel: 'Administrador',
-      heroTitle: 'Monitorea solicitudes de punta a punta',
-      heroSubtitle:
-          'Filtra por estatus, ruta, proveedor, cliente, fecha y prioridad comercial.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Nuevas',
-          value: '23',
-          helper: 'Sin primera respuesta.',
-        ),
-        MarketplaceMetric(
-          label: 'En cotizacion',
-          value: '41',
-          helper: 'Proveedores respondiendo.',
-        ),
-        MarketplaceMetric(
-          label: 'Criticas',
-          value: '5',
-          helper: 'Salidas de ultima hora.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.filter_alt_rounded,
-          label: 'Filtrar',
-          message: 'Filtros avanzados preparados.',
-        ),
-        StaticAction(
-          icon: Icons.person_search_rounded,
-          label: 'Asignar proveedor',
-          message: 'Asignacion preparada.',
-        ),
-        StaticAction(
-          icon: Icons.flag_rounded,
-          label: 'Marcar critica',
-          message: 'Solicitud marcada como critica.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'TLC -> CUN',
-          subtitle: 'Cliente corporativo | 6 pasajeros',
-          status: 'En cotizacion',
-          amount: '\$18,900',
-        ),
-        StaticRecord(
-          title: 'GDL -> IAH',
-          subtitle: 'Internacional | requiere permisos',
-          status: 'Critica',
-          amount: '\$34,700',
-        ),
-        StaticRecord(
-          title: 'MTY -> SJD',
-          subtitle: 'Proveedor sugerido: Executive Wings',
-          status: 'Pendiente',
-          amount: '\$21,400',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Filtros avanzados',
-          description: 'Estatus, ruta, proveedor, cliente y fecha.',
-        ),
-        MarketplaceModule(
-          title: 'Detalle completo',
-          description: 'Historial, mensajes, ofertas y actividad.',
-        ),
-        MarketplaceModule(
-          title: 'Intervencion admin',
-          description: 'Asignar proveedor, escalar o cerrar caso.',
-        ),
-      ],
-    );
-  }
-}
-
-class _AdminQuotesScreen extends StatelessWidget {
-  const _AdminQuotesScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Cotizaciones',
-      subtitle: 'Seguimiento comercial de propuestas enviadas y aceptadas.',
-      roleLabel: 'Administrador',
-      heroTitle: 'Controla conversion de cotizacion a venta',
-      heroSubtitle:
-          'Visualiza cotizaciones enviadas, aceptadas, rechazadas, vencidas y en negociacion.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Enviadas',
-          value: '86',
-          helper: 'Propuestas activas del mes.',
-        ),
-        MarketplaceMetric(
-          label: 'Aceptadas',
-          value: '31',
-          helper: 'Conversion comercial actual.',
-        ),
-        MarketplaceMetric(
-          label: 'Vencidas',
-          value: '12',
-          helper: 'Requieren seguimiento.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.send_rounded,
-          label: 'Enviar recordatorio',
-          message: 'Recordatorio preparado.',
-        ),
-        StaticAction(
-          icon: Icons.edit_note_rounded,
-          label: 'Editar',
-          message: 'Edicion de cotizacion preparada.',
-        ),
-        StaticAction(
-          icon: Icons.done_all_rounded,
-          label: 'Marcar aceptada',
-          message: 'Cotizacion aceptada de forma estatica.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'COT-1048 | TLC -> CUN',
-          subtitle: 'Cliente Premium | Citation CJ3',
-          status: 'Aceptada',
-          amount: '\$18,900',
-        ),
-        StaticRecord(
-          title: 'COT-1051 | MTY -> SJD',
-          subtitle: 'Esperando respuesta del cliente',
-          status: 'Pendiente',
-          amount: '\$21,400',
-        ),
-        StaticRecord(
-          title: 'COT-1054 | GDL -> IAH',
-          subtitle: 'Vigencia vencida, requiere actualizar',
-          status: 'Vencida',
-          amount: '\$34,700',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Seguimiento',
-          description: 'Recordatorios, vencimientos y actividad comercial.',
-        ),
-        MarketplaceModule(
-          title: 'Conversion',
-          description: 'Medicion de cotizacion a reserva confirmada.',
-        ),
-        MarketplaceModule(
-          title: 'Auditoria',
-          description: 'Cambios de tarifa, notas y aprobaciones.',
-        ),
-      ],
-    );
-  }
-}
-
-class _AdminReportsScreen extends StatelessWidget {
-  const _AdminReportsScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Reportes',
-      subtitle: 'Analitica de rutas, flota, proveedores y ventas.',
-      roleLabel: 'Administrador',
-      heroTitle: 'KPIs ejecutivos para tomar decisiones',
-      heroSubtitle:
-          'Reportes de rutas mas solicitadas, aeronaves usadas, horas voladas, proveedores activos y conversion.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Ruta top',
-          value: 'TLC-CUN',
-          helper: 'Mayor demanda del mes.',
-        ),
-        MarketplaceMetric(
-          label: 'Horas voladas',
-          value: '412',
-          helper: 'Horas estimadas confirmadas.',
-        ),
-        MarketplaceMetric(
-          label: 'Conversion',
-          value: '36%',
-          helper: 'Cotizacion a venta.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.download_rounded,
-          label: 'Exportar',
-          message: 'Exportacion preparada.',
-        ),
-        StaticAction(
-          icon: Icons.date_range_rounded,
-          label: 'Cambiar periodo',
-          message: 'Selector de periodo preparado.',
-        ),
-        StaticAction(
-          icon: Icons.bar_chart_rounded,
-          label: 'Ver grafica',
-          message: 'Grafica ejecutiva preparada.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Rutas mas solicitadas',
-          subtitle: 'TLC-CUN, MTY-SJD, GDL-IAH',
-          status: 'Activo',
-          amount: '128',
-        ),
-        StaticRecord(
-          title: 'Proveedor top',
-          subtitle: 'Sky Operator | 18 vuelos confirmados',
-          status: 'Activo',
-          amount: '98%',
-        ),
-        StaticRecord(
-          title: 'Ingresos marketplace',
-          subtitle: 'Comisiones estimadas del mes',
-          status: 'Confirmado',
-          amount: '\$42k',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Demanda',
-          description: 'Rutas, fechas, pasajeros y categorias mas buscadas.',
-        ),
-        MarketplaceModule(
-          title: 'Oferta',
-          description: 'Aeronaves usadas, disponibilidad y proveedores.',
-        ),
-        MarketplaceModule(
-          title: 'Finanzas',
-          description: 'Ingresos, comisiones, pagos, reembolsos y planes.',
-        ),
-      ],
-    );
-  }
-}
-
-class _AdminSettingsScreen extends StatelessWidget {
-  const _AdminSettingsScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Configuracion',
-      subtitle: 'Planes, demos, roles, permisos y mensajes del sistema.',
-      roleLabel: 'Administrador',
-      heroTitle: 'Configura reglas comerciales de la plataforma',
-      heroSubtitle:
-          'Administra demo de 15 dias, planes, precios, permisos, banners y mensajes de conversion.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Demos activas',
-          value: '42',
-          helper: 'Cuentas en periodo gratuito.',
-        ),
-        MarketplaceMetric(
-          label: 'Planes',
-          value: '4',
-          helper: 'Demo, Basico, Pro y Empresarial.',
-        ),
-        MarketplaceMetric(
-          label: 'Roles',
-          value: '3',
-          helper: 'Cliente, proveedor y administrador.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.workspace_premium_rounded,
-          label: 'Editar planes',
-          message: 'Planes listos para editar.',
-        ),
-        StaticAction(
-          icon: Icons.hourglass_top_rounded,
-          label: 'Ver demos',
-          message: 'Demos activas listas.',
-        ),
-        StaticAction(
-          icon: Icons.campaign_rounded,
-          label: 'Mensaje sistema',
-          message: 'Mensaje del sistema preparado.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Demo 15 dias',
-          subtitle: 'Acceso limitado con conversion a plan',
-          status: 'Activo',
-          amount: '\$0',
-        ),
-        StaticRecord(
-          title: 'Plan Pro',
-          subtitle: 'Reservas, reportes y prioridad',
-          status: 'Activo',
-          amount: '\$249/mes',
-        ),
-        StaticRecord(
-          title: 'Banner de upgrade',
-          subtitle: 'Visible cuando faltan 3 dias',
-          status: 'Activo',
-          amount: '3 dias',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Planes',
-          description: 'Precios, beneficios, permisos y CTA.',
-        ),
-        MarketplaceModule(
-          title: 'Demos',
-          description: 'Activacion, vencimiento, bloqueo y upgrade.',
-        ),
-        MarketplaceModule(
-          title: 'Sistema',
-          description:
-              'Banners, mensajes, roles, permisos y parametros generales.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ClientProfileScreen extends StatelessWidget {
-  const _ClientProfileScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Perfil y configuracion',
-      subtitle:
-          'Preferencias de pasajero, datos fiscales, metodo de pago, seguridad y estado de membresia.',
-      roleLabel: 'Cliente',
-      heroTitle: 'Administra tu perfil premium',
-      heroSubtitle:
-          'Centraliza tus datos, preferencias de vuelo, metodos de pago, facturacion y estado de membresia.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Membresia',
-          value: 'Demo activa',
-          helper: 'Estado visible para convertir a plan al final del periodo.',
-        ),
-        MarketplaceMetric(
-          label: 'Preferencias',
-          value: 'VIP',
-          helper: 'Catering, transporte, WiFi, mascotas y seguridad.',
-        ),
-        MarketplaceMetric(
-          label: 'Pagos',
-          value: 'Pendiente',
-          helper: 'Espacio listo para tarjetas, facturacion y pago.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.edit_rounded,
-          label: 'Editar datos',
-          message: 'Edicion de perfil preparada.',
-        ),
-        StaticAction(
-          icon: Icons.credit_card_rounded,
-          label: 'Metodo de pago',
-          message: 'Metodo de pago listo para conectar.',
-        ),
-        StaticAction(
-          icon: Icons.workspace_premium_rounded,
-          label: 'Ver membresia',
-          message: 'Estado de membresia demo activo.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Datos personales',
-          subtitle: 'Cliente premium | contacto principal',
-          status: 'Activo',
-          amount: 'Completo',
-        ),
-        StaticRecord(
-          title: 'Facturacion',
-          subtitle: 'Datos fiscales pendientes de validacion',
-          status: 'Pendiente',
-          amount: '80%',
-        ),
-        StaticRecord(
-          title: 'Preferencias VIP',
-          subtitle: 'WiFi, catering ligero, traslado FBO',
-          status: 'Activo',
-          amount: 'VIP',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Datos personales y empresa',
-          description:
-              'Informacion del cliente, contacto operativo y datos de facturacion.',
-        ),
-        MarketplaceModule(
-          title: 'Preferencias de vuelo',
-          description:
-              'Pasajeros frecuentes, catering, equipaje, FBO y servicios especiales.',
-        ),
-        MarketplaceModule(
-          title: 'Seguridad de cuenta',
-          description:
-              'Cambio de contrasena, notificaciones y preferencias de privacidad.',
-        ),
-      ],
-    );
-  }
-}
-
-class _ProviderCalendarScreen extends StatelessWidget {
-  const _ProviderCalendarScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Calendario de disponibilidad',
-      subtitle:
-          'Bloqueo, liberacion y mantenimiento de aeronaves por fecha, hora y base operativa.',
-      roleLabel: 'Proveedor',
-      heroTitle: 'Controla disponibilidad por aeronave',
-      heroSubtitle:
-          'Bloquea horarios, libera inventario, marca mantenimiento y valida solicitudes antes de cotizar.',
-      metrics: [
-        MarketplaceMetric(
-          label: 'Disponibles',
-          value: '8',
-          helper: 'Aeronaves listas para recibir solicitudes.',
-        ),
-        MarketplaceMetric(
-          label: 'Bloqueadas',
-          value: '3',
-          helper: 'Mantenimiento, vuelos privados o ventanas no comerciales.',
-        ),
-        MarketplaceMetric(
-          label: 'Respuesta',
-          value: '12 min',
-          helper: 'Tiempo estimado para confirmar disponibilidad.',
-        ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.lock_clock_rounded,
-          label: 'Bloquear horario',
-          message: 'Horario bloqueado de forma estatica.',
-        ),
-        StaticAction(
-          icon: Icons.event_available_rounded,
-          label: 'Liberar avion',
-          message: 'Aeronave liberada para solicitudes.',
-        ),
-        StaticAction(
-          icon: Icons.build_rounded,
-          label: 'Mantenimiento',
-          message: 'Mantenimiento marcado en calendario.',
-        ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Citation CJ3',
-          subtitle: 'Hoy 08:00 - 18:00 | Base TLC',
-          status: 'Disponible',
-          amount: '10 h',
-        ),
-        StaticRecord(
-          title: 'Learjet 45',
-          subtitle: 'Manana 09:00 - 13:00 | Vuelo privado',
-          status: 'Bloqueado',
-          amount: '4 h',
-        ),
-        StaticRecord(
-          title: 'King Air 350',
-          subtitle: 'Mantenimiento preventivo | 2 dias',
-          status: 'Revision',
-          amount: '48 h',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Vista calendario',
-          description:
-              'Agenda por aeronave, fecha, hora, aeropuerto base y estado operativo.',
-        ),
-        MarketplaceModule(
-          title: 'Bloquear o liberar',
-          description:
-              'Acciones rapidas para pausar disponibilidad o abrir inventario al marketplace.',
-        ),
-        MarketplaceModule(
-          title: 'Sincronizacion de solicitudes',
-          description:
-              'Las solicitudes recibidas deben validar disponibilidad antes de cotizar.',
-        ),
-      ],
-    );
-  }
-}
-
-class _AdminUsersScreen extends StatelessWidget {
-  const _AdminUsersScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const StaticRoleScreen(
-      title: 'Gestion de usuarios',
-      subtitle:
-          'Clientes, proveedores y administradores con permisos, estatus y actividad comercial.',
-      roleLabel: 'Administrador',
-      heroTitle: 'Gestiona usuarios, roles y accesos',
-      heroSubtitle:
-          'Controla clientes, proveedores, administradores, permisos, bloqueos, demos y actividad reciente.',
-      metrics: [
-        MarketplaceMetric(
+          screen: _WorkspaceModuleScreen(
+            title: 'Configuracion',
+            subtitle:
+                'Reglas comerciales, permisos, banners y parametros globales del sistema.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Configura como opera la plataforma',
+            heroSubtitle:
+                'Administra mensajes, permisos, roles activos, demo y reglas de conversion.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Roles',
+                value: '4',
+                helper: 'Cliente, operador, crew y admin.',
+              ),
+              MarketplaceMetric(
+                label: 'Banners',
+                value: '3',
+                helper: 'Mensajes visibles en momentos criticos.',
+              ),
+              MarketplaceMetric(
+                label: 'Flags',
+                value: '12',
+                helper: 'Parametros activos del producto.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.tune_rounded,
+                label: 'Editar planes',
+                message: 'Abre el centro de configuracion comercial.',
+              ),
+              StaticAction(
+                icon: Icons.campaign_rounded,
+                label: 'Mensaje sistema',
+                message: 'Configura comunicacion general de la app.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra roles, permisos o banners.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Banner upgrade',
+                subtitle: 'Visible cuando faltan 3 dias de demo',
+                status: 'Activo',
+                amount: '3 dias',
+              ),
+              StaticRecord(
+                title: 'Permisos crew',
+                subtitle: 'Acceso acotado a operacion asignada',
+                status: 'Confirmado',
+                amount: 'Activo',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Producto',
+                description: 'Mensajes, flags y reglas visibles.',
+              ),
+              MarketplaceModule(
+                title: 'Permisos',
+                description: 'Acceso por rol y experiencia de usuario.',
+              ),
+              MarketplaceModule(
+                title: 'Conversion',
+                description: 'Banners, CTA y ventanas de demo.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
           label: 'Clientes',
-          value: '312',
-          helper: 'Cuentas registradas en el marketplace.',
+          shortLabel: 'Clientes',
+          groupLabel: 'Comercial',
+          description: 'Cuentas VIP, historiales y perfil de servicio.',
+          icon: Icons.person_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Clientes',
+            subtitle:
+                'Gestion integral de cuentas cliente, historial, preferencias y riesgo.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Controla clientes y contexto comercial completo',
+            heroSubtitle:
+                'Permite altas, clasificacion VIP, historial de viajes y validacion fiscal.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'VIP',
+                value: '28',
+                helper: 'Cuentas con prioridad y SLA premium.',
+              ),
+              MarketplaceMetric(
+                label: 'Corporativos',
+                value: '14',
+                helper: 'Empresas con multiples viajeros y contratos.',
+              ),
+              MarketplaceMetric(
+                label: 'Riesgo',
+                value: '2',
+                helper: 'Perfiles con seguimiento manual.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.person_add_rounded,
+                label: 'Crear cliente',
+                message: 'Alta comercial lista para iniciar.',
+              ),
+              StaticAction(
+                icon: Icons.verified_rounded,
+                label: 'Validar perfil fiscal',
+                message: 'Activa el flujo de validacion fiscal.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Segmenta por tipo, estatus o riesgo.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Mariana Torres',
+                subtitle: 'Cliente VIP con 12 dias de demo',
+                status: 'Activo',
+                amount: 'VIP',
+              ),
+              StaticRecord(
+                title: 'NorthBridge Capital',
+                subtitle: 'Cuenta corporativa con multiples contactos',
+                status: 'Confirmado',
+                amount: 'Corp',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Perfil',
+                description: 'Datos, empresa y preferencias del cliente.',
+              ),
+              MarketplaceModule(
+                title: 'Historial',
+                description: 'Reservas, cotizaciones y pagos.',
+              ),
+              MarketplaceModule(
+                title: 'Riesgo',
+                description: 'Flags internos y seguimiento comercial.',
+              ),
+            ],
+          ),
         ),
-        MarketplaceMetric(
+        RoleWorkspaceItem(
+          label: 'Reservas',
+          shortLabel: 'Reservas',
+          groupLabel: 'Comercial',
+          description: 'Solicitudes, cambios y estado integral del booking.',
+          icon: Icons.calendar_month_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Solicitudes / Reservas',
+            subtitle:
+                'Gestion del ciclo completo desde solicitud hasta operacion finalizada.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Coordina reservas con visibilidad ejecutiva',
+            heroSubtitle:
+                'Seccion central del portal para revisar estado, reasignar recursos y controlar penalizaciones.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Pendientes',
+                value: '9',
+                helper: 'Solicitudes aun en revision.',
+              ),
+              MarketplaceMetric(
+                label: 'Confirmadas',
+                value: '12',
+                helper: 'Reservas listas para operar.',
+              ),
+              MarketplaceMetric(
+                label: 'Canceladas',
+                value: '2',
+                helper: 'Casos con penalizacion o reembolso.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.add_circle_outline_rounded,
+                label: 'Crear reserva',
+                message: 'Alta manual de booking lista.',
+              ),
+              StaticAction(
+                icon: Icons.swap_horiz_rounded,
+                label: 'Reasignar aeronave',
+                message: 'Ajusta recursos sin salir del portal.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra por estado o prioridad.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Reserva SG-1048',
+                subtitle: 'Cliente premium | 6 pasajeros | operador asignado',
+                status: 'Pendiente',
+                amount: 'TLC-CUN',
+              ),
+              StaticRecord(
+                title: 'Reserva SG-1039',
+                subtitle: 'Contrato firmado y pago validado',
+                status: 'Confirmado',
+                amount: 'MTY-SJD',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Solicitud',
+                description: 'Entrada comercial y datos del viaje.',
+              ),
+              MarketplaceModule(
+                title: 'Asignacion',
+                description: 'Aeronave, operador y crew del vuelo.',
+              ),
+              MarketplaceModule(
+                title: 'Control',
+                description: 'Contrato, pago y estatus operativo.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
+          label: 'Pricing',
+          shortLabel: 'Pricing',
+          groupLabel: 'Comercial',
+          description: 'Cotizaciones, margen y fee de plataforma.',
+          icon: Icons.price_change_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Cotizaciones / Pricing',
+            subtitle:
+                'Costo proveedor, margen y precio final por operacion para control ejecutivo.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Controla pricing y rentabilidad por servicio',
+            heroSubtitle:
+                'Replica el flujo web donde admin crea, ajusta y valida cotizaciones con contexto financiero.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Activas',
+                value: '15',
+                helper: 'Cotizaciones dentro de vigencia.',
+              ),
+              MarketplaceMetric(
+                label: 'Margen',
+                value: '29%',
+                helper: 'Promedio actual del portafolio.',
+              ),
+              MarketplaceMetric(
+                label: 'Vencidas',
+                value: '3',
+                helper: 'Requieren ajuste o nueva propuesta.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.add_chart_rounded,
+                label: 'Crear cotizacion',
+                message: 'Nueva propuesta lista para elaborarse.',
+              ),
+              StaticAction(
+                icon: Icons.percent_rounded,
+                label: 'Actualizar margen',
+                message: 'Ajusta fee o rentabilidad del vuelo.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra activas, vencidas o aprobadas.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'COT-1048',
+                subtitle: 'Ruta TLC-CUN con margen revisado',
+                status: 'Pendiente',
+                amount: '29%',
+              ),
+              StaticRecord(
+                title: 'COT-1054',
+                subtitle: 'Oferta internacional fuera de vigencia',
+                status: 'Vencida',
+                amount: '\$34,700',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Costo base',
+                description: 'Costo operador y fee de plataforma.',
+              ),
+              MarketplaceModule(
+                title: 'Oferta',
+                description: 'Precio cliente, vigencia y descuentos.',
+              ),
+              MarketplaceModule(
+                title: 'Margen',
+                description: 'Control ejecutivo de rentabilidad.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
+          label: 'Paquetes',
+          shortLabel: 'Paquetes',
+          groupLabel: 'Comercial',
+          description: 'Membresias, beneficios y oferta comercial activa.',
+          icon: Icons.card_membership_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Paquetes',
+            subtitle:
+                'Catalogo de planes, beneficios y visibilidad comercial para clientes.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Administra paquetes y valor comercial de la plataforma',
+            heroSubtitle:
+                'Permite configurar categorias, beneficios concierge y niveles de servicio visibles.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Activos',
+                value: '6',
+                helper: 'Paquetes visibles en la oferta.',
+              ),
+              MarketplaceMetric(
+                label: 'Corporativos',
+                value: '2',
+                helper: 'Planes para cuentas enterprise.',
+              ),
+              MarketplaceMetric(
+                label: 'Ocultos',
+                value: '1',
+                helper: 'No visible en la venta actual.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.add_box_rounded,
+                label: 'Crear paquete',
+                message: 'Alta comercial lista para editar.',
+              ),
+              StaticAction(
+                icon: Icons.edit_rounded,
+                label: 'Actualizar beneficios',
+                message: 'Edita valor comercial del paquete.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra activos, ocultos o enterprise.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Plan Ejecutivo',
+                subtitle: 'Horas preferentes, concierge y prioridad',
+                status: 'Activo',
+                amount: '\$249/mes',
+              ),
+              StaticRecord(
+                title: 'Plan Corporativo',
+                subtitle: 'Acceso multiusuario y contratos empresariales',
+                status: 'Confirmado',
+                amount: 'Enterprise',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Catalogo',
+                description: 'Planes visibles para clientes y empresas.',
+              ),
+              MarketplaceModule(
+                title: 'Beneficios',
+                description: 'Horas, SLA, concierge y add-ons.',
+              ),
+              MarketplaceModule(
+                title: 'Visibilidad',
+                description: 'Reglas para mostrar o pausar paquetes.',
+              ),
+            ],
+          ),
+        ),
+        RoleWorkspaceItem(
+          label: 'Suscripciones',
+          shortLabel: 'Subs',
+          groupLabel: 'Comercial',
+          description: 'Demos, planes activos y conversion comercial.',
+          icon: Icons.workspace_premium_rounded,
+          screen: MembershipCenterScreen(audience: MembershipAudience.admin),
+        ),
+        RoleWorkspaceItem(
+          label: 'Pagos / Finanzas',
+          shortLabel: 'Pagos',
+          groupLabel: 'Comercial',
+          description: 'Cobros, payouts, comisiones y conciliacion.',
+          icon: Icons.account_balance_wallet_rounded,
+          screen: AdminFinanceScreen(),
+        ),
+        RoleWorkspaceItem(
           label: 'Proveedores',
-          value: '47',
-          helper: 'Operadores con expediente y flota asociada.',
+          shortLabel: 'Prov.',
+          groupLabel: 'Operacion',
+          description: 'Red de partners, SLA y cumplimiento.',
+          icon: Icons.groups_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Proveedores',
+            subtitle:
+                'Control de partners, disponibilidad, documentos y estado comercial.',
+            roleLabel: 'Administrador',
+            heroTitle:
+                'Gestiona la red de proveedores con visibilidad completa',
+            heroSubtitle:
+                'La operacion central revisa SLA, documentos, flota y estatus de cada partner.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Activos',
+                value: '18',
+                helper: 'Partners con acceso y SLA vigente.',
+              ),
+              MarketplaceMetric(
+                label: 'En pausa',
+                value: '3',
+                helper: 'Proveedores temporalmente deshabilitados.',
+              ),
+              MarketplaceMetric(
+                label: 'Cumplimiento',
+                value: '87%',
+                helper: 'Salud documental consolidada.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.add_business_rounded,
+                label: 'Crear proveedor',
+                message: 'Alta de partner lista para iniciar.',
+              ),
+              StaticAction(
+                icon: Icons.assignment_turned_in_rounded,
+                label: 'Revisar SLA',
+                message: 'Analiza cumplimiento y calidad del proveedor.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra activos, pausa o incidencias.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Sky Operator',
+                subtitle: 'Partner con contrato vigente y flota visible',
+                status: 'Activo',
+                amount: '98%',
+              ),
+              StaticRecord(
+                title: 'Executive Wings',
+                subtitle: 'Observaciones documentales por corregir',
+                status: 'Pendiente',
+                amount: 'SLA 92%',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Perfil',
+                description: 'Empresa, contacto y bases operativas.',
+              ),
+              MarketplaceModule(
+                title: 'Cumplimiento',
+                description: 'Contrato, SLA y documentos vigentes.',
+              ),
+              MarketplaceModule(
+                title: 'Flota',
+                description: 'Aeronaves publicadas y estado comercial.',
+              ),
+            ],
+          ),
         ),
-        MarketplaceMetric(
-          label: 'Admins',
-          value: '6',
-          helper: 'Equipo interno con permisos de control.',
+        RoleWorkspaceItem(
+          label: 'Aeronaves',
+          shortLabel: 'Flota',
+          groupLabel: 'Operacion',
+          description: 'Revision de matriculas, documentos y liberacion.',
+          icon: Icons.flight_class_rounded,
+          screen: AdminAircraftScreen(),
         ),
-      ],
-      actions: [
-        StaticAction(
-          icon: Icons.person_add_rounded,
-          label: 'Crear usuario',
-          message: 'Alta de usuario preparada.',
+        RoleWorkspaceItem(
+          label: 'Operadores',
+          shortLabel: 'Ops',
+          groupLabel: 'Operacion',
+          description: 'Turnos, permisos y performance del equipo.',
+          icon: Icons.support_agent_rounded,
+          screen: AdminOperatorsScreen(),
         ),
-        StaticAction(
-          icon: Icons.lock_open_rounded,
-          label: 'Activar cuenta',
-          message: 'Cuenta activada de forma estatica.',
+        RoleWorkspaceItem(
+          label: 'Sobrecargos',
+          shortLabel: 'Crew',
+          groupLabel: 'Operacion',
+          description: 'Disponibilidad, certificaciones y pagos del crew.',
+          icon: Icons.badge_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Sobrecargos',
+            subtitle:
+                'Supervision de disponibilidad, certificaciones, agenda y pagos del equipo de cabina.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Monitorea al equipo de cabina desde un solo tablero',
+            heroSubtitle:
+                'Replica la vista web para readiness, agenda, rating y estado documental del crew.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Disponibles',
+                value: '14',
+                helper: 'Listos para una nueva asignacion.',
+              ),
+              MarketplaceMetric(
+                label: 'En servicio',
+                value: '7',
+                helper: 'Cabina con mision o briefing activo.',
+              ),
+              MarketplaceMetric(
+                label: 'Rating',
+                value: '4.9/5',
+                helper: 'Promedio consolidado del servicio.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.person_add_rounded,
+                label: 'Crear sobrecargo',
+                message: 'Alta de crew lista para iniciar.',
+              ),
+              StaticAction(
+                icon: Icons.upload_file_rounded,
+                label: 'Subir certificado',
+                message: 'Actualiza expediente del crew.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra disponibilidad, rating o docs.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Ana Lira',
+                subtitle: 'Base TLC | lista para vuelos premium',
+                status: 'Activo',
+                amount: '4.9/5',
+              ),
+              StaticRecord(
+                title: 'CRM / recurrente',
+                subtitle: 'Documento critico por validar este mes',
+                status: 'Pendiente',
+                amount: '20 dias',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Agenda',
+                description: 'Disponibilidad, asignaciones y bloqueos.',
+              ),
+              MarketplaceModule(
+                title: 'Expediente',
+                description: 'Certificaciones, idiomas y rating.',
+              ),
+              MarketplaceModule(
+                title: 'Pagos',
+                description: 'Horas, payout y conciliacion del crew.',
+              ),
+            ],
+          ),
         ),
-        StaticAction(
-          icon: Icons.block_rounded,
-          label: 'Bloquear',
-          message: 'Bloqueo de cuenta preparado.',
+        RoleWorkspaceItem(
+          label: 'Contratos',
+          shortLabel: 'Contratos',
+          groupLabel: 'Operacion',
+          description: 'Plantillas, firma digital y clausulas.',
+          icon: Icons.description_outlined,
+          screen: _WorkspaceModuleScreen(
+            title: 'Contratos',
+            subtitle:
+                'Plantillas, clausulas y estado de firma por reserva y proveedor.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Administra contratos con versionado y trazabilidad',
+            heroSubtitle:
+                'Seccion ejecutiva para controlar plantillas, firma digital y reemplazos documentales.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'En firma',
+                value: '5',
+                helper: 'Pendientes de completar por clientes.',
+              ),
+              MarketplaceMetric(
+                label: 'Firmados',
+                value: '18',
+                helper: 'Contratos cerrados y vigentes.',
+              ),
+              MarketplaceMetric(
+                label: 'Plantillas',
+                value: '4',
+                helper: 'Versiones disponibles por tipo de servicio.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.add_box_rounded,
+                label: 'Crear contrato',
+                message: 'Abre alta de contrato o version.',
+              ),
+              StaticAction(
+                icon: Icons.rule_folder_rounded,
+                label: 'Elegir plantilla',
+                message: 'Selecciona template segun servicio.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra firmados, pendientes o anulados.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Contrato SG-1048',
+                subtitle: 'Reserva premium lista para firma de cliente',
+                status: 'Pendiente',
+                amount: 'Hoy',
+              ),
+              StaticRecord(
+                title: 'Contrato corp-22',
+                subtitle: 'Template enterprise vigente y firmado',
+                status: 'Confirmado',
+                amount: 'Vigente',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Plantillas',
+                description: 'Versiones por tipo de servicio o cuenta.',
+              ),
+              MarketplaceModule(
+                title: 'Firma',
+                description: 'Estado de firmantes y auditoria.',
+              ),
+              MarketplaceModule(
+                title: 'Adjuntos',
+                description: 'Clausulas, anexos y reemplazos.',
+              ),
+            ],
+          ),
         ),
-      ],
-      records: [
-        StaticRecord(
-          title: 'Mariana Torres',
-          subtitle: 'Cliente | demo activa | 12 dias restantes',
-          status: 'Activo',
-          amount: 'Cliente',
-        ),
-        StaticRecord(
-          title: 'Sky Operator',
-          subtitle: 'Proveedor | expediente aprobado',
-          status: 'Aprobado',
-          amount: 'Proveedor',
-        ),
-        StaticRecord(
-          title: 'Admin Operaciones',
-          subtitle: 'Permisos de soporte y vuelos',
-          status: 'Activo',
-          amount: 'Admin',
-        ),
-      ],
-      modules: [
-        MarketplaceModule(
-          title: 'Gestion de clientes',
+        RoleWorkspaceItem(
+          label: 'Documentos',
+          shortLabel: 'Docs',
+          groupLabel: 'Operacion',
           description:
-              'Alta, busqueda, bloqueo, membresia, historial y actividad reciente.',
+              'Repositorio central de licencias, seguros y certificados.',
+          icon: Icons.folder_copy_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Documentos',
+            subtitle:
+                'Repositorio documental centralizado para operadores, flota, crew y contratos.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Concentra vigencias y cumplimiento documental',
+            heroSubtitle:
+                'Permite vigilar licencias, seguros, certificados y documentos de soporte del negocio.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Validos',
+                value: '146',
+                helper: 'Documentos aprobados y vigentes.',
+              ),
+              MarketplaceMetric(
+                label: 'Por vencer',
+                value: '8',
+                helper: 'Requieren renovacion inmediata.',
+              ),
+              MarketplaceMetric(
+                label: 'Rechazados',
+                value: '3',
+                helper: 'Archivos con observaciones abiertas.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.upload_file_rounded,
+                label: 'Subir documento',
+                message: 'Carga un nuevo archivo al repositorio.',
+              ),
+              StaticAction(
+                icon: Icons.verified_rounded,
+                label: 'Validar archivo',
+                message: 'Aprueba o rechaza un documento.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra validos, vencidos o rechazados.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Seguro XA-SKY',
+                subtitle: 'Poliza vigente hasta diciembre',
+                status: 'Activo',
+                amount: 'Vigente',
+              ),
+              StaticRecord(
+                title: 'Licencia tripulacion',
+                subtitle: 'Archivo rechazado por formato incorrecto',
+                status: 'Pendiente',
+                amount: 'Rechazado',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Repositorio',
+                description: 'Todo el expediente documental del negocio.',
+              ),
+              MarketplaceModule(
+                title: 'Vigencias',
+                description: 'Semaforo y control preventivo.',
+              ),
+              MarketplaceModule(
+                title: 'Revision',
+                description: 'Aprobacion y comentarios de admin.',
+              ),
+            ],
+          ),
         ),
-        MarketplaceModule(
-          title: 'Gestion de proveedores',
-          description:
-              'Aprobacion, perfil empresarial, documentos, comisiones y estado operativo.',
+        RoleWorkspaceItem(
+          label: 'Incidencias',
+          shortLabel: 'Incidencias',
+          groupLabel: 'Operacion',
+          description: 'Mesa de soporte, escalamiento y cierre de casos.',
+          icon: Icons.report_problem_rounded,
+          screen: AdminSupportScreen(),
         ),
-        MarketplaceModule(
-          title: 'Permisos administrativos',
-          description:
-              'Roles internos para soporte, finanzas, operaciones y administracion general.',
+        RoleWorkspaceItem(
+          label: 'Notificaciones',
+          shortLabel: 'Avisos',
+          groupLabel: 'Operacion',
+          description: 'Alertas, recordatorios y comunicacion operacional.',
+          icon: Icons.notifications_active_rounded,
+          screen: _WorkspaceModuleScreen(
+            title: 'Notificaciones',
+            subtitle:
+                'Centro de mensajes, alertas y recordatorios para cada actor del sistema.',
+            roleLabel: 'Administrador',
+            heroTitle: 'Controla la comunicacion operacional y comercial',
+            heroSubtitle:
+                'Permite emitir alertas manuales, mensajes urgentes y recordatorios programados.',
+            metrics: [
+              MarketplaceMetric(
+                label: 'Activas',
+                value: '12',
+                helper: 'Mensajes vigentes o pendientes de leer.',
+              ),
+              MarketplaceMetric(
+                label: 'Urgentes',
+                value: '4',
+                helper: 'Alertas de prioridad alta.',
+              ),
+              MarketplaceMetric(
+                label: 'Programadas',
+                value: '7',
+                helper: 'Recordatorios futuros ya definidos.',
+              ),
+            ],
+            actions: [
+              StaticAction(
+                icon: Icons.add_alert_rounded,
+                label: 'Crear alerta manual',
+                message: 'Mensaje urgente listo para emitirse.',
+              ),
+              StaticAction(
+                icon: Icons.schedule_send_rounded,
+                label: 'Programar recordatorio',
+                message: 'Configura fecha y destinatario.',
+              ),
+              StaticAction(
+                icon: Icons.filter_alt_rounded,
+                label: 'Filtrar',
+                message: 'Muestra activas, urgentes o caducas.',
+              ),
+            ],
+            records: [
+              StaticRecord(
+                title: 'Demo por vencer',
+                subtitle:
+                    'Notificacion automatica a clientes con 3 dias restantes',
+                status: 'Activo',
+                amount: 'Programada',
+              ),
+              StaticRecord(
+                title: 'Cambio de slot',
+                subtitle: 'Alerta operativa enviada a crew y operador',
+                status: 'Confirmado',
+                amount: 'Urgente',
+              ),
+            ],
+            modules: [
+              MarketplaceModule(
+                title: 'Mensajes',
+                description: 'Campanas manuales y avisos del sistema.',
+              ),
+              MarketplaceModule(
+                title: 'Programacion',
+                description: 'Recordatorios por evento o fecha.',
+              ),
+              MarketplaceModule(
+                title: 'Destinatarios',
+                description: 'Cliente, operador, crew o admin.',
+              ),
+            ],
+          ),
         ),
       ],
+    );
+  }
+}
+
+class _WorkspaceModuleScreen extends StatelessWidget {
+  const _WorkspaceModuleScreen({
+    required this.title,
+    required this.subtitle,
+    required this.roleLabel,
+    required this.heroTitle,
+    required this.heroSubtitle,
+    required this.metrics,
+    required this.actions,
+    required this.records,
+    required this.modules,
+  });
+
+  final String title;
+  final String subtitle;
+  final String roleLabel;
+  final String heroTitle;
+  final String heroSubtitle;
+  final List<MarketplaceMetric> metrics;
+  final List<StaticAction> actions;
+  final List<StaticRecord> records;
+  final List<MarketplaceModule> modules;
+
+  @override
+  Widget build(BuildContext context) {
+    return StaticRoleScreen(
+      title: title,
+      subtitle: subtitle,
+      roleLabel: roleLabel,
+      heroTitle: heroTitle,
+      heroSubtitle: heroSubtitle,
+      metrics: metrics,
+      actions: actions,
+      records: records,
+      modules: modules,
     );
   }
 }

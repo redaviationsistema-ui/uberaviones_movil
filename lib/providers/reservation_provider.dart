@@ -1,16 +1,12 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/aircraft.dart';
 import '../models/airport.dart';
 import '../models/route_model.dart';
-import '../services/local_cache_service.dart';
+import '../services/reservation_service.dart';
 
 class ReservationProvider extends ChangeNotifier {
-  final supabase = Supabase.instance.client;
-  final LocalCacheService _cacheService = LocalCacheService();
+  final ReservationService _reservationService = ReservationService();
 
   String? flightType;
   String? aircraftType;
@@ -53,33 +49,8 @@ class ReservationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> checkInternetConnection() async {
-    try {
-      final result = await InternetAddress.lookup('example.com');
-      return result.isNotEmpty && result.first.rawAddress.isNotEmpty;
-    } on SocketException {
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
   Future<List<Map<String, dynamic>>> _fetchReservationsRemote() async {
-    final response = await supabase
-        .from('reservations')
-        .select('aircraft_id, start_datetime, end_datetime, status')
-        .inFilter('status', ['pending', 'confirmed']);
-
-    return (response as List)
-        .map<Map<String, dynamic>>(
-          (r) => {
-            'aircraft_id': r['aircraft_id'],
-            'start_datetime': r['start_datetime'],
-            'end_datetime': r['end_datetime'],
-            'status': r['status'],
-          },
-        )
-        .toList();
+    return _reservationService.getActiveReservationsRaw();
   }
 
   List<Map<String, dynamic>> _mapReservationRows(
@@ -96,130 +67,132 @@ class ReservationProvider extends ChangeNotifier {
         .toList();
   }
 
-  Map<String, dynamic> _normalizeAirport(dynamic raw) {
-    final json = Map<String, dynamic>.from(raw as Map);
-
-    return {
-      'name':
-          json['AEROPUERTO'] ??
-          json['name'] ??
-          json['airport'] ??
-          json['nombre'] ??
-          '',
-      'city': json['CIUDAD'] ?? json['city'] ?? json['municipality'] ?? '',
-      'state': json['ESTADO'] ?? json['state'] ?? json['region'],
-      'lat': _toDouble(json['LATITUDE'] ?? json['lat']),
-      'lng': _toDouble(json['LONGITUDE'] ?? json['lng']),
-      'iata': json['IATA'] ?? json['iata'] ?? json['gps_code'],
-      'country':
-          json['PAIS'] ??
-          json['country'] ??
-          json['COUNTRY'] ??
-          json['iso_country'] ??
-          'MEXICO',
-    };
-  }
-
-  double _toDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0;
-    return 0;
-  }
-
-  Future<void> loadCachedData({String? fallbackReason}) async {
-    final cachedAirports = await _cacheService.getCachedAirports();
-    final cachedAircraft = await _cacheService.getCachedAircraft();
-    final cachedReservations = await _cacheService.getCachedReservations();
-    final cachedSyncAt = await _cacheService.getMetadata('last_sync_at');
-
-    airports =
-        cachedAirports
-            .map((row) => Airport.fromJson(Map<String, dynamic>.from(row)))
-            .toList();
-    aircraftFleet =
-        cachedAircraft
-            .map((row) => Aircraft.fromJson(Map<String, dynamic>.from(row)))
-            .toList();
-    reservations = _mapReservationRows(
-      cachedReservations.map((row) => Map<String, dynamic>.from(row)).toList(),
-    );
-
-    lastSyncAt = cachedSyncAt == null ? null : DateTime.tryParse(cachedSyncAt);
-    isOnline = false;
-
-    if (airports.isEmpty && aircraftFleet.isEmpty) {
-      syncMessage =
-          fallbackReason == null
-              ? "No hay datos locales guardados en el telefono."
-              : "Sin conexion y sin datos locales guardados.";
-    } else {
-      final syncText =
-          lastSyncAt == null
-              ? "sin fecha previa"
-              : "ultima sincronizacion ${lastSyncAt!.day.toString().padLeft(2, '0')}/${lastSyncAt!.month.toString().padLeft(2, '0')}/${lastSyncAt!.year} ${lastSyncAt!.hour.toString().padLeft(2, '0')}:${lastSyncAt!.minute.toString().padLeft(2, '0')}";
-
-      syncMessage =
-          "Modo offline: se cargaron ${airports.length} aeropuertos, ${aircraftFleet.length} aeronaves y ${reservations.length} reservas desde la base local ($syncText).";
-    }
-  }
-
   Future<void> loadInitialData() async {
     isLoadingData = true;
     syncMessage = "Sincronizando informacion con el servidor...";
     notifyListeners();
 
     try {
-      final hasInternet = await checkInternetConnection();
-      if (!hasInternet) {
-        await loadCachedData(fallbackReason: 'no_internet');
-        return;
-      }
+      final loadedAirports = await _safeLoadAirports();
+      final loadedFleet = await _safeLoadFleet();
+      final loadedReservations = await _safeLoadReservations();
 
-      final national = await supabase.from('aeropuertos_mexico').select();
-      final international = await supabase.from('airports_geo').select();
-
-      final normalizedAirports = [
-        ...(national as List).map(_normalizeAirport),
-        ...(international as List).map(_normalizeAirport),
-      ];
-
-      airports = normalizedAirports.map(Airport.fromJson).toList();
-
-      final aircraftResponse = await supabase
-          .from('aircraft_fleet')
-          .select()
-          .eq('is_active', true);
-
-      aircraftFleet =
-          (aircraftResponse as List)
-              .map((json) => Aircraft.fromJson(Map<String, dynamic>.from(json)))
-              .toList();
-
-      final remoteReservations = await _fetchReservationsRemote();
-      reservations = _mapReservationRows(remoteReservations);
-
-      await _cacheService.cacheAirports(
-        airports.map((airport) => airport.toCacheMap()).toList(),
-      );
-      await _cacheService.cacheAircraft(
-        aircraftFleet.map((aircraft) => aircraft.toCacheMap()).toList(),
-      );
-      await _cacheService.cacheReservations(remoteReservations);
+      airports = loadedAirports;
+      aircraftFleet = loadedFleet;
+      reservations = loadedReservations;
 
       final now = DateTime.now();
-      await _cacheService.setMetadata('last_sync_at', now.toIso8601String());
-
       lastSyncAt = now;
-      isOnline = true;
-      syncMessage =
-          "Sincronizacion completada: ${airports.length} aeropuertos, ${aircraftFleet.length} aeronaves y ${reservations.length} reservas guardadas en el telefono.";
+      isOnline = airports.isNotEmpty || aircraftFleet.isNotEmpty;
+
+      if (airports.isEmpty && aircraftFleet.isEmpty && reservations.isEmpty) {
+        syncMessage =
+            "No se pudo obtener informacion del servidor para el portal.";
+      } else if (aircraftFleet.isEmpty && reservations.isEmpty) {
+        syncMessage =
+            "Se cargaron ${airports.length} aeropuertos desde el servidor. La flota y las reservas no estuvieron disponibles en esta sesion.";
+      } else {
+        syncMessage =
+            "Sincronizacion completada: ${airports.length} aeropuertos, ${aircraftFleet.length} aeronaves y ${reservations.length} reservas actualizadas desde el servidor.";
+      }
     } catch (e) {
       debugPrint("ERROR LOADING DATA: $e");
-      await loadCachedData(fallbackReason: e.toString());
+      isOnline = false;
+      syncMessage =
+          "No se pudo actualizar la informacion del portal. Verifica la conexion e intenta de nuevo.";
     } finally {
       isLoadingData = false;
       notifyListeners();
     }
+  }
+
+  Future<void> loadClientPortalData() async {
+    isLoadingData = true;
+    syncMessage = "Cargando datos del portal cliente...";
+    notifyListeners();
+
+    try {
+      final loadedTrips = await _safeLoadClientTrips();
+      reservations = loadedTrips;
+      lastSyncAt = DateTime.now();
+      isOnline = true;
+      syncMessage =
+          "Portal cliente actualizado: ${reservations.length} solicitudes sincronizadas.";
+    } catch (e) {
+      debugPrint("ERROR LOADING CLIENT PORTAL DATA: $e");
+      isOnline = false;
+      syncMessage =
+          "No se pudo actualizar el portal cliente desde el servidor.";
+    } finally {
+      isLoadingData = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<Airport>> _safeLoadAirports() async {
+    try {
+      return await _reservationService.getAllAirports();
+    } catch (error) {
+      debugPrint("ERROR LOADING AIRPORTS: $error");
+      return airports;
+    }
+  }
+
+  Future<List<Aircraft>> _safeLoadFleet() async {
+    try {
+      return await _reservationService.getFleet();
+    } catch (error) {
+      debugPrint("ERROR LOADING FLEET: $error");
+      return aircraftFleet;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _safeLoadReservations() async {
+    try {
+      final remoteReservations = await _fetchReservationsRemote();
+      return _mapReservationRows(remoteReservations);
+    } catch (error) {
+      debugPrint("ERROR LOADING RESERVATIONS: $error");
+      return reservations;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _safeLoadClientTrips() async {
+    try {
+      final remoteTrips = await _reservationService.getClientTripsRaw();
+      return _mapReservationRows(remoteTrips);
+    } catch (error) {
+      debugPrint("ERROR LOADING CLIENT TRIPS: $error");
+      return reservations;
+    }
+  }
+
+  Future<List<Aircraft>> searchClientFlights({
+    required Airport origin,
+    required Airport destination,
+    required DateTime departureDate,
+    required TimeOfDay? departureTime,
+    required int passengers,
+    required String preference,
+    List<Map<String, dynamic>> extraLegs = const [],
+    String? tripLabel,
+  }) async {
+    final departureTimeLabel =
+        departureTime == null
+            ? '09:00'
+            : '${departureTime.hour.toString().padLeft(2, '0')}:${departureTime.minute.toString().padLeft(2, '0')}';
+    final departureDateLabel =
+        '${departureDate.year.toString().padLeft(4, '0')}-${departureDate.month.toString().padLeft(2, '0')}-${departureDate.day.toString().padLeft(2, '0')}';
+
+    return _reservationService.searchClientFlights({
+      'origin': origin.iata ?? origin.name,
+      'destination': destination.iata ?? destination.name,
+      'departure_datetime': '$departureDateLabel $departureTimeLabel',
+      'passengers': passengers,
+      'aircraft_type': preference,
+      'requirements': extraLegs,
+      'notes': tripLabel ?? '',
+    });
   }
 
   List<Aircraft> get filteredFleet {

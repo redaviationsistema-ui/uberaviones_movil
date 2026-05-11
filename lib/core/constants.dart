@@ -1,19 +1,18 @@
 class AppConstants {
-
   /* ===============================
-     SUPABASE
+     API
   =============================== */
 
-  static const String supabaseUrl =
-      "https://antkusroysbehyliqvti.supabase.co";
-
-  static const String supabaseAnonKey =
-      "sb_publishable_RZWNYqYb0-TL6vYSTBZozg_Qk465M4b";
+  static const String _defaultApiBaseUrl =
+      'https://uber-aviones.onrender.com/api/v1';
+  static final String apiBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: _defaultApiBaseUrl,
+  ).replaceFirst(RegExp(r'/$'), '');
 
   /* ===============================
      TAX
   =============================== */
-
 
   /* ===============================
      FLIGHT TYPES
@@ -23,7 +22,7 @@ class AppConstants {
     "Private Jet",
     "Helicopter",
     "Air Ambulance",
-    "Cargo"
+    "Cargo",
   ];
 
   /* ===============================
@@ -40,34 +39,18 @@ class AppConstants {
      (igual que tu sistema Vue)
   =============================== */
 
-
-
   /* ===============================
      AIRPORT TYPES
   =============================== */
 
   static const Map<String, List<String>> flightTypeAirportTypes = {
+    "Private Jet": ["AIRPORT"],
 
-    "Private Jet": [
-      "AIRPORT"
-    ],
+    "Helicopter": ["Helicóptero", "HELIPLATAFORMA", "AIRPORT"],
 
-    "Helicopter": [
-      "Helicóptero",
-      "HELIPLATAFORMA",
-      "AIRPORT"
-    ],
+    "Air Ambulance": ["AIRPORT", "HELIPUERTO", "HELIPLATAFORMA"],
 
-    "Air Ambulance": [
-      "AIRPORT",
-      "HELIPUERTO",
-      "HELIPLATAFORMA"
-    ],
-
-    "Cargo": [
-      "AIRPORT"
-    ]
-
+    "Cargo": ["AIRPORT"],
   };
 
   /* ===============================
@@ -85,5 +68,4 @@ class AppConstants {
   static const double padding = 20.0;
 
   static const double borderRadius = 12.0;
-
 }
